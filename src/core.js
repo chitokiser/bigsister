@@ -137,6 +137,8 @@
     // router & chain
     routeTo, hashRoute, renderRoute, connectWallet, getTier,
   };
+  // core.js 마지막 줄 근처
+window.dispatchEvent(new CustomEvent("app:ready"));
 
   renderRoute();
 })();
