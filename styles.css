@@ -1,0 +1,42 @@
+:root{
+  --bg:#0b0d14; --card:rgba(255,255,255,0.06); --border:rgba(255,255,255,0.12);
+  --text:#e9eefc; --muted:#a9b1c7; --accent:#7c3aed;
+  --radius:16px; --radius-lg:22px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,Arial}
+a{color:inherit;text-decoration:none;opacity:.95}
+a:hover{opacity:1}
+.container{max-width:1100px;margin:0 auto;padding:18px}
+.row{display:flex;align-items:center}
+.row.gap{gap:12px}
+.row.spread{justify-content:space-between}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.grid.two{grid-template-columns:repeat(2,1fr)}
+@media (max-width:920px){.grid,.grid.two{grid-template-columns:1fr}}
+.site-header{position:sticky;top:0;background:rgba(11,13,20,.7);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);z-index:10}
+.logo{font-weight:800;letter-spacing:.3px}
+.nav a{padding:8px 10px;border-radius:10px}
+.nav a:hover{background:var(--card)}
+.site-footer{border-top:1px solid var(--border);margin-top:28px}
+.view{display:none;margin-top:18px}
+.view.active{display:block}
+.hero{padding:28px;border:1px solid var(--border);border-radius:var(--radius-lg);background:linear-gradient(120deg,rgba(124,58,237,.18),rgba(37,99,235,.12))}
+.section-title{margin:18px 0 8px 0}
+.card{border:1px solid var(--border);border-radius:var(--radius);padding:16px;background:var(--card)}
+.list>.item,.grid>.card{border:1px solid var(--border);border-radius:var(--radius);padding:14px;background:rgba(255,255,255,.03)}
+.btn{border:0;background:var(--accent);color:#fff;padding:9px 12px;border-radius:12px;font-weight:600;cursor:pointer}
+.btn:hover{filter:brightness(1.05)}
+.btn.outline{background:transparent;border:1px solid var(--accent);color:var(--accent)}
+.btn.subtle{background:transparent;border:1px solid var(--border);color:var(--text)}
+.btn.block{display:block;width:100%}
+.input, textarea{width:100%;padding:10px;border-radius:12px;border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--text)}
+.badge{font-size:12px;padding:4px 8px;border-radius:999px;border:1px solid var(--border);color:var(--muted)}
+.pill{font-size:12px;padding:6px 10px;border-radius:999px;background:rgba(124,58,237,.15);border:1px solid rgba(124,58,237,.35)}
+.hidden{display:none !important}
+.avatar{width:32px;height:32px;border-radius:50%;border:1px solid var(--border)}
+.tag{border:1px solid var(--border);border-radius:999px;padding:3px 8px;margin-right:6px;color:var(--muted);font-size:12px}
+.price{font-weight:700}
+.kit{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.card h3{margin:6px 0 10px}
+.small{font-size:12px;color:var(--muted)}

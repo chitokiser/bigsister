@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>NomadLocal · 지역 큰언니 플랫폼 (MVP)</title>
+  <link rel="stylesheet" href="./styles.css"/>
+
+  <!-- UI helper (선택) -->
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- Firebase (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+
+  <!-- Ethers (지갑/온체인) -->
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.12.1/dist/ethers.umd.min.js"></script>
+
+  <!-- QRCode -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="container row spread">
+    <div class="row gap">
+      <div class="logo">NomadLocal</div>
+      <nav class="nav row gap">
+        <a href="#/" data-link>홈</a>
+        <a href="#/search" data-link>검색</a>
+        <a href="#/my" data-link>마이</a>
+        <a href="#/agent" data-link>큰언니 콘솔</a>
+        <a href="#/admin" data-link>운영자</a>
+      </nav>
+    </div>
+    <div class="row gap">
+      <button id="btn-google" class="btn">Google 로그인</button>
+      <button id="btn-logout" class="btn subtle hidden">로그아웃</button>
+      <button id="btn-wallet" class="btn outline">지갑 연결</button>
+      <span id="tier-pill" class="pill hidden">티어: -</span>
+      <img id="user-photo" class="avatar hidden" alt="user"/>
+    </div>
+  </div>
+</header>
+
+<main class="container">
+  <!-- 홈 -->
+  <section id="view-home" class="view active">
+    <div class="hero">
+      <h1>지역 <b>큰언니</b>와 함께하는 여행·생활 지원</h1>
+      <p>검색·문의·견적·예약·온체인 결제·QR 바우처·리뷰까지 한 번에!</p>
+      <div class="row gap">
+        <input id="home-q" type="search" placeholder="지역/키워드 검색" class="input">
+        <button id="home-search" class="btn">검색</button>
+      </div>
+    </div>
+
+    <h2 class="section-title">추천 언니네 지역</h2>
+    <div id="region-grid" class="grid"></div>
+
+    <h2 class="section-title">인기 큰언니</h2>
+    <div id="agent-grid" class="grid"></div>
+
+    <h2 class="section-title">공지</h2>
+    <div id="notice-list" class="list"></div>
+  </section>
+
+  <!-- 검색 -->
+  <section id="view-search" class="view">
+    <h2 class="section-title">검색 결과</h2>
+    <div class="row gap">
+      <input id="search-q" type="search" placeholder="지역/테마/예산/언어/태그" class="input">
+      <button id="search-run" class="btn">검색</button>
+    </div>
+    <div id="search-grid" class="grid"></div>
+  </section>
+
+  <!-- 상품 상세 -->
+  <section id="view-detail" class="view">
+    <div id="detail-wrap" class="card"></div>
+  </section>
+
+  <!-- 마이 -->
+  <section id="view-my" class="view">
+    <h2 class="section-title">내 예약</h2>
+    <div id="my-orders" class="list"></div>
+
+    <h2 class="section-title">내 바우처(QR)</h2>
+    <div id="my-vouchers" class="grid"></div>
+
+    <h2 class="section-title">내 리뷰</h2>
+    <div id="my-reviews" class="list"></div>
+  </section>
+
+  <!-- 큰언니 콘솔 -->
+  <section id="view-agent" class="view">
+    <div class="row spread">
+      <h2 class="section-title">큰언니 콘솔</h2>
+      <span id="agent-status" class="pill">상태: -</span>
+    </div>
+
+    <div class="grid two">
+      <div class="card">
+        <h3>지역 소개 카드</h3>
+        <div class="form">
+          <input id="agent-name" class="input" placeholder="큰언니 팀/프로필명"/>
+          <textarea id="agent-bio" class="input" placeholder="소개/전문분야"></textarea>
+          <input id="agent-region" class="input" placeholder="지역명(예: 다낭)"/>
+          <input id="agent-wallet" class="input" placeholder="정산 지갑(선택)" />
+          <button id="agent-save" class="btn">저장/갱신</button>
+          <button id="agent-apply" class="btn outline">큰언니 승인가입 신청</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>상품/포스트 등록</h3>
+        <div class="form">
+          <input id="post-title" class="input" placeholder="제목"/>
+          <textarea id="post-body" class="input" placeholder="본문/일정/포함내역"></textarea>
+          <input id="post-price" class="input" type="number" placeholder="가격(BET)"/>
+          <input id="post-tags" class="input" placeholder="태그(쉼표 구분)"/>
+          <button id="post-create" class="btn">등록</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid two">
+      <div class="card">
+        <h3>문의/견적 파이프라인</h3>
+        <div id="pipe-inquiries" class="list"></div>
+      </div>
+      <div class="card">
+        <h3>예약/정산</h3>
+        <div id="pipe-orders" class="list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 운영자 -->
+  <section id="view-admin" class="view">
+    <h2 class="section-title">운영자 콘솔</h2>
+    <div class="grid two">
+      <div class="card">
+        <h3>큰언니 심사/승인</h3>
+        <div id="admin-agents" class="list"></div>
+      </div>
+      <div class="card">
+        <h3>바우처 발행</h3>
+        <div class="form">
+          <input id="v-region" class="input" placeholder="범위(regionId or global)"/>
+          <input id="v-face" class="input" type="number" placeholder="금액/퍼센트 값"/>
+          <input id="v-exp" class="input" type="date" placeholder="만료일"/>
+          <button id="v-issue" class="btn">발행(오프체인 문서)</button>
+        </div>
+        <div id="v-issued" class="list"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>공지</h3>
+      <div class="form">
+        <input id="n-title" class="input" placeholder="제목"/>
+        <textarea id="n-body" class="input" placeholder="내용"></textarea>
+        <button id="n-publish" class="btn">공지 발행</button>
+      </div>
+      <div id="n-list" class="list"></div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="container row spread">
+    <small>© NomadLocal MVP • 큰언니 인증제 · 온체인 결제/티어 · QR 바우처</small>
+    <div class="row gap">
+      <button id="seed-demo" class="btn subtle">데모 데이터 시드</button>
+      <button id="purge-demo" class="btn subtle">데모 삭제</button>
+    </div>
+  </div>
+</footer>
+
+<!-- 앱 -->
+<!-- index.html 맨 아래 -->
+<script src="./src/config.js?v=1"></script>
+<script src="./src/core.js?v=1"></script>
+<script src="./src/market.js?v=1"></script>
+<script src="./src/console.js?v=1"></script>
+
+
+</html>
