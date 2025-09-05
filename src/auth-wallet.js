@@ -1,77 +1,95 @@
-import { $, toast, auth, db, State, CHAIN, ONCHAIN, short } from './utils.js';
+/* auth-wallet.js — 지갑 연결/티어 조회 (ESM) */
+'use strict';
 
-/* ---------- 4) Auth ---------- */
-$("#btn-google")?.addEventListener("click", async ()=>{
-  try{
-    const provider = new firebase.auth.GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: "select_account" });
-    const res = await auth.signInWithPopup(provider);
-    const u = res.user;
-    await db.collection("users").doc(u.uid).set({
-      uid: u.uid,
-      email: u.email || null,
-      displayName: u.displayName || null,
-      photo: u.photoURL || null,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge:true });
-  }catch(e){ console.error(e); if(e.code!=='auth/cancelled-popup-request') toast("로그인 실패: " + (e.message||e.code)); }
-});
-$("#btn-logout")?.addEventListener("click", ()=> auth.signOut());
+import { $, toast, short, CHAIN } from './utils.js';
 
-auth.onAuthStateChanged(async (u)=>{
-  State.user = u || null;
-  $("#btn-google")?.classList.toggle("hidden", !!u);
-  $("#btn-logout")?.classList.toggle("hidden", !u);
-  $("#user-photo")?.classList.toggle("hidden", !u);
-  if(u?.photoURL){ $("#user-photo").src = u.photoURL; }
+function getState() {
+  const S = (window.App?.State) || (window.State) || {};
+  return {
+    user: S.user || null,
+    wallet: S.wallet || null,
+    tier: Number(S.tier || 0),
+    provider: S.provider || null,
+    signer: S.signer || null
+  };
+}
+function setState(patch) {
+  const base = (window.App?.State) || (window.State) || {};
+  const next = { ...base, ...patch };
+  if (window.App) window.App.State = next;
+  else window.State = next;
+  return next;
+}
 
-  // These functions will be defined in features.js, so we'll need to import them or call them from there.
-  // For now, I'll comment them out and address them when creating features.js
-  // await refreshAgentState();
-  // if(location.hash === "" || location.hash === "#/"){ routeTo("home"); }
-  // refreshHome();
-  // refreshMy();
-  // if(hashRoute()==="agent") renderAgentPipes();
-  // if(hashRoute()==="admin") renderAdmin();
-});
+async function ensureChain(provider) {
+  const ethereum = window.ethereum;
+  if (!ethereum) return;
 
-/* ---------- 5) Wallet / Chain / Tier ---------- */
-async function connectWallet(){
-  if(!window.ethereum){ toast("지갑이 없습니다. MetaMask 등을 설치하세요."); return; }
-  State.provider = new ethers.BrowserProvider(window.ethereum);
-  const net = await State.provider.getNetwork().catch(()=>null);
-  if(!net || Number(net.chainId) !== 204){
-    try{
-      await window.ethereum.request({ method:"wallet_switchEthereumChain", params:[{ chainId: CHAIN.chainIdHex }]});
-    }catch(switchErr){
-      await window.ethereum.request({ method:"wallet_addEthereumChain", params:[{
-        chainId: CHAIN.chainIdHex, chainName: CHAIN.chainName, rpcUrls: CHAIN.rpcUrls,
-        nativeCurrency: CHAIN.nativeCurrency, blockExplorerUrls: CHAIN.blockExplorerUrls
-      }]});
+  let net = null;
+  try { net = await provider.getNetwork(); } catch (_) {}
+
+  if (!net || Number(net.chainId) !== parseInt(CHAIN.chainIdHex, 16)) {
+    try {
+      await ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: CHAIN.chainIdHex }] });
+    } catch (switchErr) {
+      await ethereum.request({
+        method: 'wallet_addEthereumChain',
+        params: [{
+          chainId: CHAIN.chainIdHex,
+          chainName: CHAIN.chainName,
+          rpcUrls: CHAIN.rpcUrls,
+          nativeCurrency: CHAIN.nativeCurrency,
+          blockExplorerUrls: CHAIN.blockExplorerUrls
+        }]
+      });
     }
   }
-  await State.provider.send("eth_requestAccounts", []);
-  State.signer = await State.provider.getSigner();
-  State.wallet = await State.signer.getAddress();
-  $("#btn-wallet") && ($("#btn-wallet").textContent = short(State.wallet));
+}
 
-  if(State.user){
-    await db.collection("users").doc(State.user.uid).set({ wallet: State.wallet },{merge:true});
-  }
+export async function connectWallet() {
+  if (!window.ethereum) { toast("지갑이 없습니다. MetaMask 등을 설치하세요."); return; }
 
-  State.tier = await getTier(State.wallet);
+  const provider = new ethers.BrowserProvider(window.ethereum);
+  await ensureChain(provider);
+  await provider.send("eth_requestAccounts", []);
+  const signer  = await provider.getSigner();
+  const wallet  = await signer.getAddress();
+
+  setState({ provider, signer, wallet });
+
+  const btn = $("#btn-wallet");
+  if (btn) btn.textContent = short(wallet);
+
+  // 티어 (데모: 0 유지)
+  const tier = await getTier(wallet).catch(() => 0);
+  setState({ tier });
+
   const pill = $("#tier-pill");
-  if(pill){ pill.textContent = `티어: ${State.tier}`; pill.classList.remove("hidden"); }
-}
-$("#btn-wallet")?.addEventListener("click", connectWallet);
+  if (pill) { pill.textContent = `티어: ${tier}`; pill.classList.remove("hidden"); }
 
-async function getTier(addr){
-  try{
-    if(!ONCHAIN.TierRegistry.address || ONCHAIN.TierRegistry.address==="0x0000000000000000000000000000000000000000") return 0;
-    const c = new ethers.Contract(ONCHAIN.TierRegistry.address, ONCHAIN.TierRegistry.abi, State.signer||State.provider);
-    const lv = await c.levelOf(addr);
-    return Number(lv);
-  }catch(e){ console.warn("tier error", e); return 0; }
+  // 로그인되어 있다면 users/{uid}.wallet 업데이트
+  try {
+    const u = getState().user;
+    const db = window.App?.db || (firebase?.firestore && firebase.firestore());
+    if (u && db) {
+      await db.collection("users").doc(u.uid).set({ wallet }, { merge: true });
+    }
+  } catch (e) {
+    console.warn("failed to persist wallet:", e?.message || e);
+  }
 }
 
-export { connectWallet, getTier };
+export async function getTier(address) {
+  try {
+    if (!address) return 0;
+    // 실제 온체인 로직 연결 시 구현
+    return 0;
+  } catch (e) {
+    console.warn("getTier error:", e?.message || e);
+    return 0;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  $("#btn-wallet")?.addEventListener("click", connectWallet);
+});

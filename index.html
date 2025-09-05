@@ -138,8 +138,14 @@
     </div>
   </section>
 
-  <!-- 운영자 -->
-  <div id="admin-agents"></div>
+  <!-- 운영자 콘솔 -->
+  <section id="view-admin" class="view">
+    <h2 class="section-title">운영자 콘솔</h2>
+
+    <div class="card">
+      <h3>심사/대기 중 큰언니</h3>
+      <div id="admin-agents" class="list"></div>
+    </div>
 
     <div class="row gap" style="margin:12px 0">
       <button id="v-issue" class="btn">바우처 발행</button>
@@ -151,11 +157,7 @@
 
     <div id="bigSisterApplicationsList" class="list"></div>
 
-    <div id="v-issued"></div>
-    <div id="n-list"></div>
-  </div>
-</section>
-
+    <div class="grid two">
       <div class="card">
         <h3>바우처 발행</h3>
         <div class="form">
@@ -166,16 +168,16 @@
         </div>
         <div id="v-issued" class="list"></div>
       </div>
-    </div>
 
-    <div class="card">
-      <h3>공지</h3>
-      <div class="form">
-        <input id="n-title" class="input" placeholder="제목"/>
-        <textarea id="n-body" class="input" placeholder="내용"></textarea>
-        <button id="n-publish" class="btn">공지 발행</button>
+      <div class="card">
+        <h3>공지</h3>
+        <div class="form">
+          <input id="n-title" class="input" placeholder="제목"/>
+          <textarea id="n-body" class="input" placeholder="내용"></textarea>
+          <button id="n-publish" class="btn">공지 발행</button>
+        </div>
+        <div id="n-list" class="list"></div>
       </div>
-      <div id="n-list" class="list"></div>
     </div>
   </section>
 </main>
@@ -190,15 +192,11 @@
   </div>
 </footer>
 
-<!-- index.html 맨 아래 -->
+<!-- 스크립트: 모듈 진입점만 유지 (중복 로드/충돌 방지) -->
 <script type="module" src="./src/utils.js?v=1"></script>
 <script type="module" src="./src/auth-wallet.js?v=1"></script>
 <script type="module" src="./src/features.js?v=1"></script>
 <script type="module" src="./src/app.js?v=1"></script>
-<script src="./src/config.js?v=1"></script>
-<script src="./src/core.js?v=1"></script>
-<script src="./src/market.js?v=1"></script>
-<script src="./src/console.js?v=1"></script>
 
-
+</body>
 </html>
