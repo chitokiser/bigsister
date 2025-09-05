@@ -32,7 +32,7 @@
         <a href="#/search" data-link>검색</a>
         <a href="#/my" data-link>마이</a>
         <a href="#/agent" data-link>큰언니 콘솔</a>
-        <a href="#/admin" data-link>운영자</a>
+        <a href="#/admin" data-link data-admin-only class="hidden">운영자</a>
       </nav>
     </div>
     <div class="row gap">
@@ -139,13 +139,23 @@
   </section>
 
   <!-- 운영자 -->
-  <section id="view-admin" class="view">
-    <h2 class="section-title">운영자 콘솔</h2>
-    <div class="grid two">
-      <div class="card">
-        <h3>큰언니 심사/승인</h3>
-        <div id="admin-agents" class="list"></div>
-      </div>
+  <div id="admin-agents"></div>
+
+    <div class="row gap" style="margin:12px 0">
+      <button id="v-issue" class="btn">바우처 발행</button>
+      <button id="n-publish" class="btn outline">공지 발행</button>
+      <button id="seed-demo" class="btn">데모 시드</button>
+      <button id="purge-demo" class="btn danger">데모 제거</button>
+      <button id="btn-show-bigsister-applications" class="btn">큰언니 심사 신청 내역 보기</button>
+    </div>
+
+    <div id="bigSisterApplicationsList" class="list"></div>
+
+    <div id="v-issued"></div>
+    <div id="n-list"></div>
+  </div>
+</section>
+
       <div class="card">
         <h3>바우처 발행</h3>
         <div class="form">
@@ -180,8 +190,11 @@
   </div>
 </footer>
 
-<!-- 앱 -->
 <!-- index.html 맨 아래 -->
+<script type="module" src="./src/utils.js?v=1"></script>
+<script type="module" src="./src/auth-wallet.js?v=1"></script>
+<script type="module" src="./src/features.js?v=1"></script>
+<script type="module" src="./src/app.js?v=1"></script>
 <script src="./src/config.js?v=1"></script>
 <script src="./src/core.js?v=1"></script>
 <script src="./src/market.js?v=1"></script>

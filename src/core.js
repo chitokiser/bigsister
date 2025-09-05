@@ -26,15 +26,63 @@
   /* ---- 3. Global State ---- */
   const State = { user:null, wallet:null, tier:0, agentDoc:null, provider:null, signer:null };
 
+
+  /* ---- 3.1 Admin Gate ---- */
+const ADMIN_EMAILS = new Set(["daguri75@gmail.com"]); // 운영자 화이트리스트
+State.isAdmin = false;
+
+async function computeAdmin(u){
+  if(!u) return false;
+
+  // 1) 이메일 화이트리스트
+  const email = (u.email||"").toLowerCase();
+  if (ADMIN_EMAILS.has(email)) return true;
+
+  // 2) users/{uid}.role === 'admin'
+  try {
+    const ud = await db.collection('users').doc(u.uid).get();
+    if (ud?.exists && String((ud.data().role||"").toLowerCase()) === 'admin') return true;
+  } catch(e) {}
+
+  // 3) 커스텀 클레임 admin:true
+  try {
+    const tok = await u.getIdTokenResult(true);
+    if (tok?.claims?.admin === true) return true;
+  } catch(e) {}
+
+  return false;
+}
+
+function isAdminUser(){ return !!State.isAdmin; }
+function guardAdmin(){
+  if (!isAdminUser()){
+    toast("운영자만 접근 가능합니다.");
+    routeTo("home");
+    return false;
+  }
+  return true;
+}
+
   /* ---- 4. Router ---- */
   function hashRoute(){ return (location.hash || "#/").replace("#/","") || "home"; }
   function routeTo(name){ location.hash = name === "home" ? "#/" : `#/${name}`; }
-  function renderRoute(){
-    const r = hashRoute();
-    $$(".view").forEach(v=>v.classList.remove("active"));
-    $("#view-"+r)?.classList.add("active");
-    window.dispatchEvent(new CustomEvent("app:route", { detail:{ route:r } }));
+ function renderRoute(){
+  const r = hashRoute();
+
+  // 🔒 admin 라우트 가드
+  if (r === 'admin' && !isAdminUser()) {
+    toast('운영자만 접근 가능합니다.');
+    routeTo('home');
+    return;
   }
+
+  $$(".view").forEach(v=>v.classList.remove("active"));
+  $("#view-"+r)?.classList.add("active");
+
+  // (옵션) 라우트 이벤트 유지
+  window.dispatchEvent(new CustomEvent("app:route", { detail:{ route:r } }));
+}
+
   window.addEventListener("hashchange", renderRoute);
 
   /* ---- 5. Auth (중복 팝업 가드 + 리다이렉트 폴백) ---- */
@@ -75,6 +123,10 @@
 
   auth.onAuthStateChanged(async (u)=>{
     State.user = u || null;
+    // 🔒 Admin 계산 & 운영자 전용 메뉴 토글
+State.isAdmin = await computeAdmin(u);
+document.querySelectorAll('[data-admin-only]').forEach(el => el.classList.toggle('hidden', !State.isAdmin));
+
     $("#btn-google")?.classList.toggle("hidden", !!u);
     $("#btn-logout")?.classList.toggle("hidden", !u);
     $("#user-photo")?.classList.toggle("hidden", !u);
@@ -128,6 +180,7 @@
 
   /* ---- 8. Expose App namespace ---- */
   window.App = {
+    
     // config
     FIREBASE_CONFIG, CHAIN, ONCHAIN, AppConfig: window.AppConfig,
     // libs
@@ -139,6 +192,8 @@
   };
   // core.js 마지막 줄 근처
 window.dispatchEvent(new CustomEvent("app:ready"));
+window.App.guardAdmin = guardAdmin;
+window.App.isAdminUser = isAdminUser;
 
   renderRoute();
 })();
