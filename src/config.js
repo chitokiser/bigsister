@@ -1,61 +1,58 @@
-//config.js
+/* src/config.js
+ * Firebase/Web3 환경설정. index.html에서 app.js보다 먼저 로드해야 합니다.
+ * Firebase 콘솔 > 프로젝트 설정 > 일반 > 내 앱(Web)에서 키를 복사해 넣으세요.
+ */
+(function () {
+  'use strict';
 
-window.AppConfig = {
-  // 🔐 Firebase Web App 설정
-  FIREBASE_CONFIG: {
-    apiKey: "AIzaSyCoeMQt7UZzNHFt22bnGv_-6g15BnwCEBA",
-    authDomain: "puppi-d67a1.firebaseapp.com",
-    projectId: "puppi-d67a1",
-    storageBucket: "puppi-d67a1.appspot.com",
-    messagingSenderId: "552900371836",
-    appId: "1:552900371836:web:88fb6c6a7d3ca3c84530f9",
-    measurementId: "G-9TZ81RW0PL"
-  },
+  // ⬇⬇ 반드시 실제 값으로 교체 ⬇⬇
+  const FIREBASE = {
+apiKey: "AIzaSyCoeMQt7UZzNHFt22bnGv_-6g15BnwCEBA",
+  authDomain: "puppi-d67a1.firebaseapp.com",
+  projectId: "puppi-d67a1",
+  storageBucket: "puppi-d67a1.firebasestorage.app" ,
+  messagingSenderId: "552900371836",
+  appId: "1:552900371836:web:88fb6c6a7d3ca3c84530f9",
+  measurementId: "G-9TZ81RW0PL"
+    // measurementId: "G-XXXXXXX" // 선택
+  };
 
-  // 🌐 체인 (opBNB)
-  CHAIN: {
-    chainIdHex: "0xCC", // 204
-    chainName: "opBNB Mainnet",
-    rpcUrls: ["https://opbnb-mainnet-rpc.bnbchain.org"],
-    nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 },
-    blockExplorerUrls: ["https://opbnbscan.com/"]
-  },
+  // 체인/RPC가 없다면 읽기 전용은 생략 가능 (데모에선 없어도 동작)
+  const CHAIN = {
+chainIdHex: "0xCC", // 204
 
-  // ⛓️ 온체인 컨트랙트
-  ONCHAIN: {
-    TierRegistry: {
-      address: "0x0000000000000000000000000000000000000000",
-      abi: [
-        { "inputs":[{"internalType":"address","name":"user","type":"address"}],
-          "name":"levelOf","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],
-          "stateMutability":"view","type":"function" }
-      ]
-    },
+chainName: "opBNB Mainnet",
+
+rpcUrls: ["https://opbnb-mainnet-rpc.bnbchain.org"],
+
+nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 },
+
+blockExplorerUrls: ["https://opbnbscan.com/"]
+
+  };
+
+  // 온체인 컨트랙트 주소(없으면 데모 모드로 동작)
+  const ONCHAIN = {
+    BET: { address: "" }, // ERC20 토큰 주소(없으면 티어=1 데모 제공)
     TravelEscrow: {
       address: "0x0000000000000000000000000000000000000000",
-      abi: [
-        {"anonymous":false,"inputs":[
-          {"indexed":false,"internalType":"bytes32","name":"orderId","type":"bytes32"},
-          {"indexed":false,"internalType":"address","name":"payer","type":"address"},
-          {"indexed":false,"internalType":"address","name":"agent","type":"address"},
-          {"indexed":false,"internalType":"address","name":"token","type":"address"},
-          {"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"}],
-          "name":"Book","type":"event"
-        },
-        {"inputs":[
-          {"internalType":"bytes32","name":"orderId","type":"bytes32"},
-          {"internalType":"address","name":"token","type":"address"},
-          {"internalType":"uint256","name":"amount","type":"uint256"},
-          {"internalType":"address","name":"agent","type":"address"}],
-          "name":"book","outputs":[],"stateMutability":"nonpayable","type":"function"
-        }
-      ]
-    },
-    // 결제용 토큰(예시)
-    PAW: { address: "0x44deEe33ca98094c40D904BFf529659a742db97E" }
-  },
+      abi: [] // 실제 배포 시 ABI 넣기
+    }
+  };
 
-  // ✅ 운영자 화이트리스트(이메일, 소문자). 필요 수 만큼 넣으세요.
-  ADMINS: ["daguri75@gmail.com"]
-};
+  // 온체인 보유량 → 티어 기준(단위: BET)
+  const TIER = { 1: 1, 2: 100, 3: 1000 };
 
+  // 전역 주입
+  window.CONFIG = {
+    firebase: FIREBASE,
+    chain: CHAIN,
+    onchain: ONCHAIN,
+    tierThresholds: TIER,
+  };
+
+  // 안전 경고(키 미설정 시 app.js가 초기화 전에 알려줌)
+  if (!window.CONFIG?.firebase?.apiKey) {
+    console.error("[config] Firebase 키가 비어 있습니다. src/config.js에 실제 키를 채워 넣으세요.");
+  }
+})();
