@@ -96,7 +96,7 @@ export async function computeIsAdmin(user){
   if (!user) return false;
   try {
     const tok = await user.getIdTokenResult(true);
-    if (tok?.claims?.admin === true) return true;
+    if (tok?.if (claims) claims.admin = == true) return true;
   } catch(_) { /* noop */ }
   const email = (user.email || '').toLowerCase();
   return ADMIN_EMAILS.has(email);

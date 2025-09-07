@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+  <meta name="theme-color" content="#0C0F14"/>
+  <title>LocaMate · 로컬 메이트 허브</title>
+  <link rel="stylesheet" href="./styles.css"/>
+
+  <!-- Firebase (compat) -->
+  <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+
+  <!-- 프로젝트 설정/초기화/로그인/헤더 주입 -->
+  <script defer src="./src/config.js"></script>
+  <script defer src="./src/firebase-init.js"></script>
+  <script defer src="./src/auth-ui.js"></script>
+  <script defer src="./src/ui/header-loader.js"></script>
+
+  <!-- 페이지 로직(맨 마지막) -->
+  <script defer src="./src/pages/localmate.js"></script>
+</head>
+<body>
+  <!-- ⬇️ 다른 페이지와 동일하게 헤더가 들어옵니다 -->
+  <div id="app-header"></div>
+
+  <main class="container">
+    <h2 class="section-title">로컬 메이트 허브</h2>
+    <span id="agent-status" class="pill">상태: -</span>
+
+    <!-- ===== 프로필 / 지역 소개 카드 ===== -->
+    <section id="section-profile" class="card" style="margin-top:12px">
+      <h3>지역 소개 카드</h3>
+      <form id="agent-form" class="form">
+        <label class="label">프로필사진</label>
+        <div class="row gap">
+          <input id="agent-photo" type="file" accept="image/*"/>
+          <span id="agent-photo-progress" class="muted small"></span>
+          <img id="agent-photo-preview" alt="미리보기"
+               style="width:120px;height:120px;object-fit:cover;border-radius:12px;border:1px solid var(--border)"
+               class="hidden"/>
+        </div>
+
+        <label class="label">표시 이름</label>
+        <input id="agent-name" class="input" placeholder="예: 큰언니 민지" autocomplete="name"/>
+
+        <label class="label">한 줄 소개 / 설명</label>
+        <textarea id="agent-bio" class="input" rows="4" placeholder="간단한 자기소개와 활동 내용을 적어주세요."></textarea>
+
+        <div class="row gap" style="margin-top:10px">
+          <div class="col" style="flex:1">
+            <label class="label">나라 선택</label>
+            <select id="agent-country" class="input" required></select>
+          </div>
+          <div class="col" style="flex:1">
+            <label class="label">도시 선택</label>
+            <select id="agent-city" class="input" required></select>
+          </div>
+        </div>
+
+        <label class="label" style="margin-top:10px">주제 선택</label>
+        <select id="agent-topic" class="input" required></select>
+
+        <label class="label" style="margin-top:10px">연락처</label>
+        <input id="agent-contact" class="input" placeholder="전화 또는 이메일" autocomplete="tel email"/>
+
+        <label class="label">메신저</label>
+        <input id="agent-messenger" class="input" placeholder="카카오/텔레그램/왓츠앱 아이디"/>
+
+        <label class="label">지갑 주소 (옵션)</label>
+        <input id="agent-wallet" class="input" placeholder="0x… (EVM 주소)" inputmode="latin"/>
+
+        <div class="row gap" style="margin-top:12px">
+          <button id="agent-save" class="btn" type="submit">저장</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- ===== 상품 등록 폼 ===== -->
+    <section id="section-product" class="card" style="margin-top:16px">
+      <h3>상품 등록</h3>
+      <form id="product-form" class="form">
+        <label class="label">상품명</label>
+        <input id="product-title" class="input" placeholder="상품명을 입력하세요" required/>
+
+        <label class="label">가격(KRW)</label>
+        <input id="product-price" class="input" type="number" min="0" step="1" placeholder="예: 15000" required/>
+
+        <label class="label">태그(쉼표로 구분)</label>
+        <input id="product-tags" class="input" placeholder="예: 투어,베트남,골프"/>
+
+        <label class="label">설명</label>
+        <textarea id="product-body" class="input" rows="4" placeholder="상품 설명을 입력하세요"></textarea>
+
+        <div class="row gap" style="margin-top:10px">
+          <div class="col" style="flex:1">
+            <label class="label">썸네일</label>
+            <input id="product-thumb" type="file" accept="image/*"/>
+            <span id="product-thumb-progress" class="muted small"></span>
+          </div>
+          <div class="col" style="flex:1">
+            <label class="label">추가 이미지(여러 장)</label>
+            <input id="product-images" type="file" accept="image/*" multiple/>
+            <span id="product-images-progress" class="muted small"></span>
+          </div>
+        </div>
+
+        <div class="row gap" style="margin-top:12px">
+          <button id="product-save" class="btn" type="submit">상품 저장</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- ===== 블로그 URL 저장 ===== -->
+    <section id="section-blog" class="card" style="margin-top:16px">
+      <h3>블로그 링크</h3>
+      <form id="blog-form" class="form">
+        <label class="label">제목</label>
+        <input id="blog-title" class="input" placeholder="제목을 입력하세요" required/>
+
+        <label class="label">URL</label>
+        <input id="blog-url" class="input" type="url" placeholder="https://..." required/>
+
+        <label class="label">태그(쉼표로 구분)</label>
+        <input id="blog-tags" class="input" placeholder="예: 다낭,여행,맛집"/>
+
+        <div class="row gap" style="margin-top:12px">
+          <button id="blog-save" class="btn" type="submit">링크 저장</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card" style="margin-top:16px">
+      <h3>나의 상품 및 포스트</h3>
+      <div id="agent-posts" class="list"></div>
+    </section>
+  </main>
+
+  <div id="app-footer"></div>
+</body>
+</html>

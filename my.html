@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+  <meta name="theme-color" content="#0C0F14"/>
+  <title>LocaMate · 마이</title>
+  <link rel="stylesheet" href="./styles.css"/>
+ <!-- Firebase (compat) -->
+<script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check-compat.js"></script> <!-- ⬅️ 추가 -->
+
+  <script src="./src/config.js"></script>
+</head>
+<body>
+  <div id="app-header"></div>
+
+  <main class="container">
+    <h2 class="section-title">마이</h2>
+    <h3>내 예약</h3>
+    <div id="my-orders" class="list"></div>
+    <h3>내 바우처(QR)</h3>
+    <div id="my-vouchers" class="grid cards-2"></div>
+    <h3>내 리뷰</h3>
+    <div id="my-reviews" class="list"></div>
+  </main>
+
+  <div id="app-footer"></div>
+
+  <script type="module" src="./src/pages/my.js"></script>
+</body>
+</html>

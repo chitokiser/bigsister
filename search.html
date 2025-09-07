@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+  <meta name="theme-color" content="#0C0F14"/>
+  <title>LocaMate · 검색</title>
+  <link rel="stylesheet" href="./styles.css"/>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+  <script src="./src/config.js"></script>
+</head>
+<body>
+  <div id="app-header"></div>
+
+  <main class="container">
+    <h2 class="section-title">검색 결과</h2>
+    <div class="row gap wrap">
+      <input id="search-q" type="search" placeholder="지역/테마/예산/언어/태그" class="input">
+      <button id="search-run" class="btn">검색</button>
+    </div>
+    <div id="search-grid" class="grid cards-3"></div>
+  </main>
+
+  <div id="app-footer"></div>
+
+  <script type="module" src="./src/pages/search.js"></script>
+</body>
+</html>

@@ -1,0 +1,101 @@
+<header class="site-header">
+  <div class="container row spread header-inner">
+    <a class="logo-wrap" href="index.html" aria-label="홈">
+      <img id="site-logo" src="./assets/logo.png" alt="LocaMate" width="30" height="30"
+           onerror="this.classList.add('hidden')"/>
+    </a>
+
+    <nav class="nav" aria-label="주요 메뉴">
+      <!-- 모바일 햄버거 -->
+      <button id="btn-open-nav" class="btn subtle" aria-label="메뉴 열기" aria-expanded="false">☰</button>
+
+      <!-- 사이드 패널 -->
+      <div id="nav-links"
+           class="nav-links"
+           role="dialog"
+           aria-modal="true"
+           aria-hidden="true"
+           aria-labelledby="nav-title"
+           tabindex="-1">
+
+        <div class="nav-header">
+          <strong id="nav-title">메뉴</strong>
+          <button id="btn-close-nav" class="btn subtle" aria-label="메뉴 닫기">✕</button>
+        </div>
+
+        <div class="nav-primary">
+          <a href="index.html" data-link>홈</a>
+          <a href="search.html" data-link>검색</a>
+          <a href="my.html" data-link>마이</a>
+          <a href="localmate.html" data-link>로컬메이트 콘솔</a>
+          <a href="admin.html" data-link data-admin-only class="hidden">운영자</a>
+        </div>
+
+        <div class="nav-actions">
+          <button id="btn-email" class="btn block">이메일 로그인</button>
+          <button id="btn-google" class="btn block">Google 로그인</button>
+          <button id="btn-logout" class="btn subtle block hidden">로그아웃</button>
+          <button id="btn-wallet" class="btn outline block">지갑 연결</button>
+          <div class="row center gap-6">
+            <span id="tier-pill" class="pill hidden">티어: -</span>
+            <img id="user-photo" class="avatar hidden" alt="user"/>
+          </div>
+        </div>
+      </div>
+
+      <!-- 반투명 백드롭 -->
+      <div id="nav-backdrop" class="nav-backdrop" aria-hidden="true"></div>
+    </nav>
+  </div>
+</header>
+
+<!-- ===== 이메일 로그인 모달 ===== -->
+<div id="email-auth-backdrop" class="modal-backdrop" aria-hidden="true"></div>
+<div id="email-auth-modal" class="modal-sheet" role="dialog" aria-modal="true" aria-labelledby="email-auth-title" aria-hidden="true" tabindex="-1">
+  <div class="modal-head">
+    <strong id="email-auth-title">이메일 로그인</strong>
+    <button id="email-auth-close" class="btn subtle" aria-label="닫기">✕</button>
+  </div>
+
+  <div class="tabs row gap">
+    <button class="tab-btn active" data-tab="login">로그인</button>
+    <button class="tab-btn" data-tab="signup">회원가입</button>
+  </div>
+
+  <!-- 로그인 탭 -->
+  <div id="tab-login" class="tab-pane active">
+    <div class="form">
+      <label class="label">이메일</label>
+      <input id="email-login" type="email" class="input" placeholder="you@example.com" autocomplete="username">
+      <label class="label">비밀번호</label>
+      <input id="password-login" type="password" class="input" placeholder="••••••••" autocomplete="current-password">
+      <button id="email-login-btn" class="btn block">로그인</button>
+      <button id="email-reset-btn" class="btn subtle block">비밀번호 재설정 메일 보내기</button>
+    </div>
+  </div>
+
+  <!-- 회원가입 탭 -->
+  <div id="tab-signup" class="tab-pane">
+    <div class="form">
+      <label class="label">이메일</label>
+      <input id="email-signup" type="email" class="input" placeholder="you@example.com" autocomplete="username">
+      <label class="label">비밀번호</label>
+      <input id="password-signup" type="password" class="input" placeholder="최소 6자" autocomplete="new-password">
+      <button id="email-signup-btn" class="btn block">회원가입</button>
+    </div>
+  </div>
+
+  <small id="email-auth-error" class="muted" style="display:block;margin-top:8px;"></small>
+</div>
+
+<!-- Firebase SDKs (compat 빌드) — 반드시 순서 유지 -->
+<script defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+
+<!-- ▶ 여러분 프로젝트 키로 초기화: firebase-init.js (아래 파일 전체 복붙) -->
+<script defer src="/src/firebase-init.js"></script>
+
+<!-- ▶ 로컬메이트 페이지 로직 (이 파일이 마지막에 로드되어야 함) -->
+<script defer src="/src/pages/localmate.js"></script>

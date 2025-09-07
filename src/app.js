@@ -1,1068 +1,647 @@
-/* app.js — 단일 진입점(ESM)
- * - Firebase 초기화(compat)
- * - 로그인/지갑/티어
- * - 라우터 + 홈/검색/마이/큰언니/운영자
- * - 승인 흐름(신청→운영자 승인→홈 카드 노출)
+/* src/app.js — LocaMate 전체 수정보완본
+ * - 로그인: 팝업 우선 + 차단/오류 시 자동 리다이렉트 폴백
+ * - 운영자/메이트 콘솔: 권한·라우팅·UI 토글 보강
+ * - 홈: 추천 로컬메이트 로딩 3단 폴백(반드시 보이게), 내 프로필 병합
+ * - 카드: [상품 보기] / [블로그 보기] 버튼 → #/search?owner=<uid>&kind=product|post
+ * - 검색: owner/kind 필터, 인덱스 없으면 클라이언트 정렬 폴백
+ * - 지갑 연결: ethers v6 + 다양한 CHAIN 설정 지원(chainIdHex/chainId/rpcUrls)
  */
+
 'use strict';
 
-/* =========================
- * 0) 전역 도우미
- * ========================= */
-// 단일/복수 셀렉터 분리
-const $  = (sel, el = document) => el.querySelector(sel);
-const $$ = (sel, el = document) => Array.from(el.querySelectorAll(sel));
-
-/** 재귀 없는 안전 토스트 */
-function toast(message){
-  const text = String(message ?? '');
+/* ========== 0) DOM/Toast 유틸 ========== */
+function $(sel, el){ return (el||document).querySelector(sel); }
+function $$(sel, el){ return Array.prototype.slice.call((el||document).querySelectorAll(sel)); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[m]; }); }
+function toast(msg){
   try{
-    if (window.Toastify){ window.Toastify({ text, duration: 2500 }).showToast(); return; }
-    if (window.M && window.M.toast){ window.M.toast({ html: text }); return; }
-    if (window.Notyf){ (new window.Notyf()).open({ message: text }); return; }
-  }catch(_){} // 무시
-  alert(text);
-}
-
-// 안전 이스케이프
-const ESC_MAP = { "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;", "`":"&#96;" };
-const esc = (s)=> String(s ?? "").replace(/[&<>'"`]/g, ch => ESC_MAP[ch]);
-
-const nl2br = (s)=> (s||"").replace(/\n/g,"<br/>");
-const fmt   = (n)=> new Intl.NumberFormat().format(Number(n||0));
-const cryptoRandomId = ()=> Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-function getTS(x){
-  if (!x) return 0;
-  if (typeof x.toMillis === 'function') return x.toMillis();
-  if (x?.toDate) { try{ return x.toDate().getTime(); }catch(_){ } }
-  if (x instanceof Date) return x.getTime();
-  if (typeof x === 'number') return x;
-  return 0;
-}
-// EVM 주소 검증
-const isValidAddress = (addr) => /^0x[a-fA-F0-9]{40}$/.test(addr || "");
-
-/* 공유 상태 */
-const State = {
-  user: null,
-  isAdmin: false,
-  wallet: null,
-  signer: null,
-  tier: 0,
-  agentDoc: null,
-};
-
-/* =========================
- * 1) Firebase 초기화 (compat)
- * ========================= */
-const FB = window.firebase;
-const CFG = window.CONFIG || {};
-if (!FB) throw new Error('Firebase compat SDK가 로드되지 않았습니다.');
-if (!CFG.firebase || !CFG.firebase.apiKey) {
-  console.error('[app] window.CONFIG.firebase 누락: src/config.js에 실제 키 입력 필요');
-}
-const app   = (FB.apps && FB.apps.length) ? FB.app() : FB.initializeApp(CFG.firebase);
-const auth  = FB.auth();
-const db    = FB.firestore();
-const store = FB.storage?.();
-
-/* 필요 시 전역 노출(다른 플러그인 대비) */
-window.App = window.App || {};
-Object.assign(window.App, { auth, db, storage: store, State, toast, esc, $, $$, nl2br, fmt });
-
-/* =========================
- * 2) 체인/티어/지갑
- * ========================= */
-const CHAIN   = window.CHAIN   || (CFG.chain||{chainId:1, rpcUrl:""});
-const ONCHAIN = window.ONCHAIN || (CFG.onchain||{ BET:{address:""}, TravelEscrow:{address:"0x0000", abi:[]} });
-const ERC20_ABI = [
-  'function balanceOf(address) view returns (uint256)',
-  'function decimals() view returns (uint8)'
-];
-
-function setTierPill(tier) {
-  State.tier = tier||0;
-  const el = $('#tier-pill');
-  if (!el) return;
-  if (State.tier > 0) { el.textContent = `티어: ${State.tier}`; el.classList.remove('hidden'); } 
-  else { el.textContent = '티어: -'; el.classList.add('hidden'); }
-}
-
-async function getTier(walletAddr){
-  if (!walletAddr) return 0;
-  const betAddr = ONCHAIN?.BET?.address || "";
-  if (!isValidAddress(betAddr)) { setTierPill(1); return 1; } // 유효 BET 주소 없으면 데모 정책: Tier 1
-
-  const { ethers } = window;
-  if (!ethers) return 0;
-  const provider = window.ethereum
-    ? new ethers.BrowserProvider(window.ethereum)
-    : (CHAIN.rpcUrl ? new ethers.JsonRpcProvider(CHAIN.rpcUrl) : null);
-  if (!provider) return 0;
-
-  const erc = new ethers.Contract(betAddr, ERC20_ABI, provider);
-  let decimals = 18;
-  try { decimals = Number(await erc.decimals()); } catch(_) {}
-
-  let bal = 0;
-  try {
-    const raw = await erc.balanceOf(walletAddr);
-    bal = Number(window.ethers.formatUnits(raw, decimals));
-  } catch(e) { console.warn('BET balance 조회 실패:', e); }
-
-  const th = (CFG.tierThresholds)||{1:1,2:100,3:1000};
-  let tier = 0;
-  if (bal >= (th[3]??Infinity)) tier = 3;
-  else if (bal >= (th[2]??Infinity)) tier = 2;
-  else if (bal >= (th[1]??1)) tier = 1;
-
-  setTierPill(tier);
-  return tier;
-}
-
-async function connectWallet(){
-  if (!window.ethereum){ toast('메타마스크 등 지갑을 설치해 주세요.'); return; }
-  try{
-    const accounts = await window.ethereum.request({ method:'eth_requestAccounts' });
-    const wallet = accounts?.[0];
-    if (!wallet) { toast('지갑 연결 취소'); return; }
-
-    // 체인 스위치
-    const targetHex = '0x'+Number(CHAIN.chainId||0).toString(16);
-    try{
-      const cur = await window.ethereum.request({ method:'eth_chainId' });
-      if (cur?.toLowerCase() !== targetHex.toLowerCase()){
-        await window.ethereum.request({ method:'wallet_switchEthereumChain', params:[{chainId: targetHex}] });
-      }
-    }catch(e){
-      try{
-        await window.ethereum.request({
-          method:'wallet_addEthereumChain',
-          params:[{ 
-            chainId: targetHex, 
-            chainName: CHAIN.network||'Custom', 
-            rpcUrls:[CHAIN.rpcUrl].filter(Boolean),
-            nativeCurrency:{ name:'ETH', symbol:'ETH', decimals:18 } 
-          }]
-        });
-      }catch(_){/* 무시 */}
+    var id='app-toast', el=document.getElementById(id);
+    if(!el){ el=document.createElement('div'); el.id=id;
+      el.style.cssText='position:fixed;left:50%;bottom:28px;transform:translateX(-50%);padding:.6rem .9rem;border:1px solid #334155;border-radius:10px;background:#111827;color:#fff;z-index:9999;opacity:0;transition:opacity .2s';
+      document.body.appendChild(el);
     }
-
-    // signer
-    const { ethers } = window;
-    const provider = new ethers.BrowserProvider(window.ethereum);
-    const signer = await provider.getSigner();
-
-    State.wallet = wallet;
-    State.signer = signer;
-    const btn = $('#btn-wallet'); if (btn) btn.textContent = `연결됨: ${wallet.slice(0,6)}…${wallet.slice(-4)}`;
-
-    try { await getTier(wallet); } catch(_) {}
-    toast('지갑 연결 완료');
-  }catch(e){
-    console.error(e);
-    toast('지갑 연결 실패: ' + (e?.message||e));
-  }
+    el.textContent=msg; el.style.opacity='1';
+    setTimeout(function(){ el.style.opacity='0'; }, 2000);
+  }catch(e){ console.log(msg); }
 }
 
-/* =========================
- * 3) 인증 (구글)
- * ========================= */
-async function computeIsAdmin(user){
-  try {
-    const tok = await user.getIdTokenResult?.();
-    if (tok?.claims?.admin === true) return true;
-  } catch(_) {}
+/* ========== 1) 전역 상태/설정 ========== */
+var State = { user:null, isAdmin:false, wallet:null, signer:null, tier:0 };
+window.State = State; // 디버깅 편의
 
-  try {
-    const udoc = await db.collection('users').doc(user.uid).get();
-    if (udoc.exists && (udoc.data().role === 'admin')) return true;
-  } catch(_) {}
+var CFG   = window.CONFIG || {};
+var FIRE  = CFG.firebase || {};
+var CHAIN = CFG.chain    || {};
+var COL   = { agents:'agents', apps:'agentApplications', items:'items', notices:'notices' };
+
+var _unsubRole = null;
+
+/* ========== 2) Firebase 초기화(compat) ========== */
+if (typeof firebase === 'undefined') throw new Error('Firebase SDK not loaded');
+if (!firebase.apps || !firebase.apps.length) firebase.initializeApp(FIRE);
+var auth=firebase.auth(), db=firebase.firestore(), st=firebase.storage();
+var TS=firebase.firestore.FieldValue.serverTimestamp;
+
+/* ========== 3) 관리자 판별(커스텀클레임 또는 users.role=admin) ========== */
+async function computeIsAdmin(user){
+  if(!user) return false;
+  try{ await user.getIdToken(true); }catch(e){}
+  try{
+    var tok=await user.getIdTokenResult();
+    if(tok && tok.claims && tok.claims.admin===true) return true;
+  }catch(e){}
+  try{
+    var snap=await db.collection('users').doc(user.uid).get();
+    if(snap.exists && (snap.data()||{}).role==='admin') return true;
+  }catch(e){}
   return false;
 }
 
+/* ========== 4) 로그인/로그아웃 — 팝업 우선 + 자동 폴백 ========== */
+let _loginBusy = false;
 async function loginGoogle(){
-  const provider = new firebase.auth.GoogleAuthProvider();
+  if (_loginBusy) return;
+  _loginBusy = true;
+  var btn = $('#btn-google');
   try{
-    const { user } = await auth.signInWithPopup(provider);
+    if(btn) btn.disabled = true;
+
+    var provider = new firebase.auth.GoogleAuthProvider();
+    // 1) 팝업 시도
+    var res = await auth.signInWithPopup(provider);
+    var user = res && res.user ? res.user : null;
+    if (user){
+      await db.collection('users').doc(user.uid).set({
+        uid:user.uid, email:user.email||'', displayName:user.displayName||'',
+        photoURL:user.photoURL||'', lastLoginAt:Date.now(), updatedAt:TS()
+      }, { merge:true });
+      State.user = user;
+      State.isAdmin = await computeIsAdmin(user);
+      updateAuthUI();
+      toast('로그인 성공');
+      await afterLogin();
+    }
+  }catch(e){
+    var code=String(e && e.code || '');
+    var msg =String(e && e.message || '');
+    var needFallback =
+      code==='auth/popup-blocked' ||
+      code==='auth/popup-closed-by-user' ||
+      code==='auth/cancelled-popup-request' ||
+      msg.includes('Opener-Policy') || msg.includes('COOP') || msg.includes('window.close');
+
+    if (needFallback){
+      try{
+        toast('팝업이 차단되어 리다이렉트로 진행합니다…');
+        var provider2 = new firebase.auth.GoogleAuthProvider();
+        await auth.signInWithRedirect(provider2);
+        return; // 리다이렉트로 이동
+      }catch(e2){
+        console.error('redirect fallback failed:', e2);
+        toast('로그인 실패: ' + (e2 && e2.message ? e2.message : e2));
+      }
+    } else {
+      console.error('popup login failed:', e);
+      toast('로그인 실패: ' + (e && e.message ? e.message : e));
+    }
+  }finally{
+    _loginBusy = false;
+    if(btn) btn.disabled = false;
+  }
+}
+
+async function handleRedirectResult(){
+  try{
+    var res = await auth.getRedirectResult();
+    var user = res && res.user ? res.user : null;
     if (!user) return;
-
     await db.collection('users').doc(user.uid).set({
-      uid: user.uid, email: user.email||null, displayName: user.displayName||null, photoURL: user.photoURL||null,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      uid:user.uid, email:user.email||'', displayName:user.displayName||'',
+      photoURL:user.photoURL||'', lastLoginAt:Date.now(), updatedAt:TS()
     }, { merge:true });
-
     State.user = user;
     State.isAdmin = await computeIsAdmin(user);
-
-    // 헤더/내비 반영
-    $$('[data-admin-only]').forEach(el=> el.classList.toggle('hidden', !State.isAdmin));
-    const btnGoogle = $('#btn-google'); if (btnGoogle) btnGoogle.classList.add('hidden');
-    const btnLogout = $('#btn-logout'); if (btnLogout) btnLogout.classList.remove('hidden');
-    const up = $('#user-photo'); if (up && user.photoURL){ up.src = user.photoURL; up.classList.remove('hidden'); }
-
-    toast('로그인되었습니다.');
-    await afterAuthRender();
+    updateAuthUI();
+    toast('로그인 성공');
+    await afterLogin();
   }catch(e){
-    console.error(e);
-    toast('로그인 실패: ' + (e?.message || e));
+    console.warn('redirect result:', e && (e.code||e.message) || e);
   }
 }
 
 async function logout(){
   try{
     await auth.signOut();
-    State.user = null;
-    State.isAdmin = false;
-    State.wallet = null; State.signer = null;
-    setTierPill(0);
-
-    $$('[data-admin-only]').forEach(el=> el.classList.add('hidden'));
-    const btnGoogle = $('#btn-google'); if (btnGoogle) btnGoogle.classList.remove('hidden');
-    const btnLogout = $('#btn-logout'); if (btnLogout) btnLogout.classList.add('hidden');
-    const up = $('#user-photo'); if (up) up.classList.add('hidden');
-    const wbtn = $('#btn-wallet'); if (wbtn) wbtn.textContent = '지갑 연결';
-
+    State.user=null; State.isAdmin=false; State.wallet=null; State.signer=null;
+    updateAuthUI();
     toast('로그아웃 되었습니다.');
-    await afterAuthRender();
+  }catch(e){
+    console.error(e); toast('로그아웃 실패: ' + (e && e.message ? e.message : e));
+  }
+}
+
+/* ========== 5) UI 토글(아바타·관리자 메뉴) ========== */
+function updateAdminUI(){
+  var els=$$('[data-admin-only]');
+  for (var i=0;i<els.length;i++){
+    if (State.isAdmin) els[i].classList.remove('hidden');
+    else els[i].classList.add('hidden');
+  }
+}
+function updateAuthUI(){
+  var g=$('#btn-google'), lo=$('#btn-logout'), up=$('#user-photo'), tp=$('#tier-pill'), w=$('#btn-wallet');
+  if(State.user){
+    if(g) g.classList.add('hidden');
+    if(lo) lo.classList.remove('hidden');
+    if(up){
+      if(State.user.photoURL){ up.src=State.user.photoURL; up.classList.remove('hidden'); }
+      else up.classList.add('hidden');
+    }
+    if(tp){ tp.textContent='티어: '+(State.tier||1); tp.classList.remove('hidden'); }
+  }else{
+    if(g) g.classList.remove('hidden');
+    if(lo) lo.classList.add('hidden');
+    if(up) up.classList.add('hidden');
+    if(tp) tp.classList.add('hidden');
+    if(w) w.textContent='지갑 연결';
+  }
+  updateAdminUI();
+}
+
+/* ========== 6) 지갑 연결(안정/다양한 CHAIN 포맷 지원) ========== */
+async function connectWallet(){
+  try{
+    if(!window.ethereum){ toast('메타마스크 등 지갑을 설치해 주세요.'); return; }
+    var accounts=await window.ethereum.request({ method:'eth_requestAccounts' });
+    var wallet=accounts && accounts[0] ? accounts[0] : null;
+    if(!wallet){ toast('지갑 연결이 취소되었습니다.'); return; }
+
+    var targetHex = CHAIN.chainIdHex || (CHAIN.chainId ? ('0x'+Number(CHAIN.chainId).toString(16)) : null);
+    if (targetHex){
+      try{
+        var cur=await window.ethereum.request({ method:'eth_chainId' });
+        if ((cur||'').toLowerCase() !== targetHex.toLowerCase()){
+          try{
+            await window.ethereum.request({ method:'wallet_switchEthereumChain', params:[{ chainId: targetHex }] });
+          }catch(e){
+            if (e && e.code===4902){
+              await window.ethereum.request({
+                method:'wallet_addEthereumChain',
+                params:[{
+                  chainId: targetHex,
+                  chainName: CHAIN.chainName || CHAIN.network || 'Custom',
+                  rpcUrls: CHAIN.rpcUrls || (CHAIN.rpcUrl ? [CHAIN.rpcUrl] : []),
+                  nativeCurrency: CHAIN.nativeCurrency || { name:'ETH', symbol:'ETH', decimals:18 },
+                  blockExplorerUrls: CHAIN.blockExplorerUrls || []
+                }]
+              });
+            } else { throw e; }
+          }
+        }
+      }catch(e){}
+    }
+
+    if(!window.ethers){ toast('ethers 라이브러리를 찾을 수 없습니다.'); return; }
+    var provider=new window.ethers.BrowserProvider(window.ethereum);
+    var signer=await provider.getSigner();
+    State.wallet=wallet; State.signer=signer;
+
+    var b=$('#btn-wallet'); if(b) b.textContent='연결됨: '+wallet.slice(0,6)+'…'+wallet.slice(-4);
+
+    try{
+      if(typeof window.ethereum.on==='function'){
+        if(typeof window.ethereum.removeAllListeners==='function'){
+          try{ window.ethereum.removeAllListeners('disconnect'); }catch(e){}
+          try{ window.ethereum.removeAllListeners('chainChanged'); }catch(e){}
+          try{ window.ethereum.removeAllListeners('accountsChanged'); }catch(e){}
+        }
+        window.ethereum.on('disconnect', function(){ try{toast('지갑 연결 해제됨 — 새로고침합니다.');}catch(e){} location.reload(); });
+        window.ethereum.on('chainChanged', function(){ location.reload(); });
+        window.ethereum.on('accountsChanged', function(){ location.reload(); });
+      }
+    }catch(e){}
+
+    toast('지갑 연결 성공');
   }catch(e){
     console.error(e);
-    toast('로그아웃 실패: ' + (e?.message || e));
+    if(e && e.code===4900) toast('지갑이 어떤 체인에도 연결되지 않았습니다. 네트워크 선택 후 다시 시도하세요.');
+    else toast('지갑 연결 실패: ' + (e && e.message ? e.message : e));
   }
 }
 
-/* =========================
- * 4) 라우터
- * ========================= */
-function hashRoute(){ return (location.hash||"#").replace("#/", "") || "home"; }
-function routeTo(name){ location.hash = name==="home" ? "#/" : `#/${name}` }
-window.addEventListener('hashchange', renderRoute);
-
-async function renderRoute(){
-  const r = hashRoute();
-  $$('.view').forEach(v=> v.classList.remove('active'));
-  const viewId = r === 'admin' ? 'view-admin' : `view-${r}`;
-  const el = $('#'+viewId);
-  if (el) el.classList.add('active');
-
-  if (r === 'search') await doSearch();
-  if (r === 'agent')  await renderAgentPipes();
-  if (r === 'admin')  await renderAdmin();
-}
-
-/* =========================
- * 5) 홈/검색/상세
- * ========================= */
-const homeSearchBtn = $('#home-search');
-if (homeSearchBtn) homeSearchBtn.addEventListener('click', ()=>{
-  const q = $('#home-q')?.value || '';
-  const target = $('#search-q'); if (target) target.value = q;
-  routeTo('search');
-});
-const searchRunBtn = $('#search-run');
-if (searchRunBtn) searchRunBtn.addEventListener('click', ()=> doSearch());
-
-async function refreshHome(){
-  // 지역
-  const regions = await db.collection('regions').orderBy('name').limit(6).get().catch(()=>({docs:[]}));
-  {
-    const el = $('#region-grid');
-    const html = regions.docs.map(d => cardRegion(d.data())).join("") ||
-      `<div class="small">지역이 없습니다. 운영자/큰언니 콘솔에서 생성하세요.</div>`;
-    if (el) el.innerHTML = html;
+/* ========== 7) 라우팅 & 쿼리 파서 ========== */
+function hashRoute(){ var s=(location.hash||'#').replace(/^#\/?/,''); return (s.split('?')[0]) || 'home'; }
+function routeTo(name, query){
+  var h = name==='home' ? '#/' : '#/'+name;
+  if (query && typeof query==='object'){
+    var qs = Object.keys(query).map(function(k){ return encodeURIComponent(k)+'='+encodeURIComponent(query[k]); }).join('&');
+    if (qs) h += '?'+qs;
   }
+  location.hash = h;
+}
+function parseHashQuery(){
+  var h=location.hash||''; var i=h.indexOf('?'); if(i<0) return {};
+  var q=h.slice(i+1), obj={};
+  q.split('&').forEach(function(p){ var kv=p.split('='); var k=decodeURIComponent(kv[0]||''); var v=decodeURIComponent(kv[1]||''); if(k) obj[k]=v; });
+  return obj;
+}
+window.addEventListener('hashchange', function(){ renderRoute().catch(console.error); });
 
-  // 승인된 큰언니
-  let agDocs=[];
+/* ========== 8) 로그인 후 공통 ========== */
+async function afterLogin(){ await renderRoute(); }
+
+/* ========== 9) 로컬 메이트 콘솔(저장/로드/신청) ========== */
+async function saveAgentProfile(user){
+  if(!user){ toast('로그인 후 이용해 주세요.'); return; }
+  var uid=user.uid;
+  var name=$('#agent-name')?$('#agent-name').value.trim():'';
+  var bio=$('#agent-bio')?$('#agent-bio').value.trim():'';
+  var city=$('#agent-region')?$('#agent-region').value.trim():'';
+  var contact=$('#agent-contact')?$('#agent-contact').value.trim():'';
+  var messenger=$('#agent-messenger')?$('#agent-messenger').value.trim():'';
+  var wallet=$('#agent-wallet')?$('#agent-wallet').value.trim():'';
+
+  var photoURL=null;
   try{
-    const snap = await db.collection('agents')
-      .where('approved','==',true).orderBy('score','desc').limit(6).get();
-    agDocs = snap.docs;
-  }catch(e){
-    console.warn('agents(approved=true) local-sort fallback:', e?.message||e);
-    const snap = await db.collection('agents').where('approved','==',true).limit(30).get().catch(()=>({docs:[]}));
-    agDocs = snap.docs.sort((a,b)=> (b.data().score||0)-(a.data().score||0)).slice(0,6);
-  }
-  {
-    const el = $('#agent-grid');
-    const html = (agDocs||[]).map(x=> cardAgent(x.data())).join("") || `<div class="small">승인된 큰언니가 없습니다.</div>`;
-    if (el) el.innerHTML = html;
-  }
+    var fi=$('#agent-photo'); var f=fi && fi.files ? fi.files[0] : null;
+    if(f){ var ref=st.ref().child('users/'+uid+'/profile/'+Date.now()+'_'+f.name); await ref.put(f); photoURL=await ref.getDownloadURL(); }
+  }catch(e){ console.warn('photo upload skipped', e); }
 
-  // 공지
-  const now = new Date();
-  let nsDocs=[];
-  try{
-    const ns = await db.collection('notices').where('startAt','<=', now).orderBy('startAt','desc').limit(20).get();
-    nsDocs = ns.docs.filter(d=>{
-      const n=d.data(); const end=n.endAt?.toDate?.()||n.endAt;
-      return !end || end>=now;
-    });
-  }catch(_){ 
-    const ns = await db.collection('notices').orderBy('startAt','desc').limit(10).get().catch(()=>({docs:[]}));
-    nsDocs = ns.docs;
-  }
-  {
-    const el = $('#notice-list');
-    const html =
-      nsDocs.map(n=> `<div class="item"><b>${esc(n.data().title)}</b><div class="small">${esc(n.data().body||"")}</div></div>`).join("")
-      || `<div class="small">현재 공지가 없습니다.</div>`;
-    if (el) el.innerHTML = html;
-  }
+  var data={ ownerUid:uid, displayName:name, bio:bio, city:city, contact:contact, messenger:messenger, wallet:wallet, updatedAt:TS() };
+  if(photoURL) data.photoURL=photoURL;
+
+  await db.collection(COL.agents).doc(uid).set(data, { merge:true });
+  toast('프로필이 저장되었습니다.');
+  await loadAgentProfile(user);
 }
-
-function cardRegion(r){
-  return `<div class="card">
-    <div class="row spread"><b>${esc(r.name)}</b><span class="badge">${esc((r.country||"").toUpperCase())}</span></div>
-    <div class="small">${esc(r.desc||"")}</div>
-  </div>`;
-}
-function cardAgent(a){
-  return `<div class="card">
-    <div class="row spread">
-      <b>${esc(a.name||"큰언니")}</b>
-      <span class="badge">평점 ${Math.round((a.rating||0)*10)/10} · 스코어 ${a.score||0}</span>
-    </div>
-    ${a.photoURL ? `<div class="thumb" style="margin:.5rem 0"><img src="${esc(a.photoURL)}" style="width:100%;max-height:160px;object-fit:cover;border-radius:12px"/></div>` : ``}
-    <div class="small">${esc(a.bio||"")}</div>
-    <div class="kit"><span class="tag">${esc(a.region||"-")}</span>${(a.badges||[]).slice(0,3).map(x=>`<span class="tag">${esc(x)}</span>`).join("")}</div>
-  </div>`;
-}
-
-async function doSearch(){
-  const q = ($('#search-q')?.value||"").trim().toLowerCase();
-  const snap = await db.collection('posts').where('status','==','open').limit(50).get().catch(()=>({docs:[]}));
-  const items = snap.docs.map(d=> ({id:d.id, ...d.data()})).filter(p=>
-    (p.title||"").toLowerCase().includes(q) ||
-    (p.body||"").toLowerCase().includes(q) ||
-    (p.tags||[]).join(',').toLowerCase().includes(q) ||
-    (p.region||"").toLowerCase().includes(q)
-  );
-  const el = $('#search-grid');
-  if (el) el.innerHTML = items.map(cardPost).join("") || `<div class="small">검색 결과가 없습니다.</div>`;
-}
-function cardPost(p){
-  return `<div class="card">
-    <div class="row spread"><b>${esc(p.title)}</b>${p.price?`<span class="price">${fmt(p.price)} PAW</span>`:''}</div>
-    <div class="small">${esc((p.body||"").slice(0,120))}...</div>
-    <div class="kit">${(p.tags||[]).slice(0,5).map(t=>`<span class="tag">${esc(t)}</span>`).join("")}</div>
-    <div class="row gap" style="margin-top:8px">
-      <button class="btn" onclick="openDetail('${p.id}')">자세히</button>
-      <button class="btn outline" onclick="openInquiry('${p.id}')">문의</button>
-    </div>
-  </div>`;
-}
-
-async function openDetail(postId){
-  const doc = await db.collection('posts').doc(postId).get();
-  if(!doc.exists){ toast('존재하지 않는 상품입니다.'); return; }
-  const p = doc.data();
-  const el = $('#detail-wrap');
-  if (el) {
-    el.innerHTML = `
-      <div class="row spread">
-        <h3>${esc(p.title)}</h3>
-        ${p.price? `<span class="price">${fmt(p.price)} PAW</span>`:''}
-      </div>
-      <div class="small">${nl2br(esc(p.body||""))}</div>
-      <div class="kit">${(p.tags||[]).map(t=>`<span class="tag">${esc(t)}</span>`).join("")}</div>
-      <div class="row gap" style="margin-top:10px">
-        <button class="btn" onclick="openInquiry('${postId}')">문의하기</button>
-        <button class="btn outline" onclick="bookDirect('${postId}')">즉시 예약(데모)</button>
-      </div>
-    `;
-  }
-  routeTo('detail');
-}
-window.openDetail = openDetail;
-
-/* 문의 */
-window.openInquiry = async function(postId){
-  if(!State.user){ toast('먼저 로그인하세요.'); return; }
-  const post = await db.collection('posts').doc(postId).get();
-  if(!post.exists){ toast('상품 없음'); return; }
-  const p = post.data();
-  const message = prompt(`[${p.title}] 큰언니에게 보낼 문의를 입력하세요:`,"안녕하세요! 일정/가격 문의드립니다.");
-  if(!message) return;
-  await db.collection('inquiries').add({
-    postId, agentId: p.agentId, regionId: p.regionId || null,
-    userUid: State.user.uid, message, status:'신규',
-    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-  });
-  toast('문의가 접수되었습니다.');
-};
-
-/* 예약(데모) */
-window.bookDirect = async function(postId){
-  if(!State.user){ toast('먼저 로그인하세요.'); return; }
-  if(!State.wallet){ await connectWallet(); if(!State.wallet) return; }
-  const tier = State.tier || await getTier(State.wallet);
-  if (Number(tier) < 1){ toast('온체인 티어 1 이상만 결제가 가능합니다.'); return; }
-
-  const pdoc = await db.collection('posts').doc(postId).get();
-  if(!pdoc.exists){ toast('상품 없음'); return; }
-  const p = pdoc.data();
-
-  const orderId = cryptoRandomId();
-  const amount = Number(p.price||0);
-  const agentWallet = p.agentWallet || (await agentWalletById(p.agentId)) || State.wallet;
-
-  // 온체인 생략(데모) — 주소/ABI 유효성 체크
-  try{
-    const okAddr = isValidAddress(ONCHAIN?.TravelEscrow?.address);
-    const okAbi  = Array.isArray(ONCHAIN?.TravelEscrow?.abi) && ONCHAIN.TravelEscrow.abi.length > 0;
-    if (State.signer && okAddr && okAbi){
-      const { ethers } = window;
-      const c = new ethers.Contract(ONCHAIN.TravelEscrow.address, ONCHAIN.TravelEscrow.abi, State.signer);
-      const idBytes = ethers.id('order:'+orderId);
-      const tokenAddr = isValidAddress(ONCHAIN?.BET?.address) ? ONCHAIN.BET.address : ethers.ZeroAddress;
-      const tx = await c.book(idBytes, tokenAddr, ethers.parseUnits(String(amount), 18), agentWallet);
-      await tx.wait();
-    }
-  }catch(e){ console.warn('온체인 결제 실패(데모 계속):', e?.shortMessage||e?.message||e); }
-
-  await db.collection('orders').doc(orderId).set({
-    id: orderId, postId, agentId: p.agentId, userUid: State.user.uid,
-    total: amount, token: 'PAW', status: '예치완료',
-    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-  });
-
-  const vId = 'v_'+orderId;
-  await db.collection('vouchers').doc(vId).set({
-    id: vId, scope:'agent', userUid: State.user.uid, agentId: p.agentId,
-    tokenId: 'DEMO-1155', faceValue: amount, rules:{ postId },
-    expiry: new Date(Date.now()+1000*60*60*24*30),
-    status:'issued', createdAt: firebase.firestore.FieldValue.serverTimestamp()
-  });
-
-  toast("예약/결제가 완료되었습니다. '마이 > 바우처'에서 QR을 확인하세요.");
-  routeTo('my');
-  refreshMy();
-};
-
-async function agentWalletById(agentId){
-  if(!agentId) return null;
-  const doc = await db.collection('agents').doc(agentId).get();
-  return doc.exists ? (doc.data().wallet || null) : null;
-}
-
-/* =========================
- * 6) 마이
- * ========================= */
-async function refreshMy(){
-  if(!State.user){
-    const o = $('#my-orders');   if (o) o.innerHTML   = `<div class="small">로그인 필요</div>`;
-    const v = $('#my-vouchers'); if (v) v.innerHTML   = `<div class="small">로그인 필요</div>`;
-    const r = $('#my-reviews');  if (r) r.innerHTML   = `<div class="small">로그인 필요</div>`;
-    return;
-  }
-
-  // orders
-  let ordersArr=[];
-  try{
-    const qs = await db.collection('orders').where('userUid','==',State.user.uid)
-      .orderBy('createdAt','desc').limit(20).get();
-    ordersArr = qs.docs.map(d=> ({id:d.id, ...d.data()}));
-  }catch(e){
-    const qs = await db.collection('orders').where('userUid','==',State.user.uid).limit(60).get();
-    ordersArr = qs.docs.map(d=> ({id:d.id, ...d.data()}));
-    ordersArr.sort((a,b)=> getTS(b.createdAt)-getTS(a.createdAt));
-    ordersArr = ordersArr.slice(0,20);
-    console.warn('orders: local sort fallback (no index)');
-  }
-
-  // vouchers
-  let vouchersArr=[];
-  try{
-    const qs = await db.collection('vouchers').where('userUid','==',State.user.uid)
-      .orderBy('createdAt','desc').limit(20).get();
-    vouchersArr = qs.docs.map(d=> ({id:d.id, ...d.data()}));
-  }catch(e){
-    const qs = await db.collection('vouchers').where('userUid','==',State.user.uid).limit(60).get();
-    vouchersArr = qs.docs.map(d=> ({id:d.id, ...d.data()}));
-    vouchersArr.sort((a,b)=> getTS(b.createdAt)-getTS(a.createdAt));
-    vouchersArr = vouchersArr.slice(0,20);
-    console.warn('vouchers: local sort fallback (no index)');
-  }
-
-  const reviewsSnap = await db.collection('reviews').where('userUid','==',State.user.uid)
-    .orderBy('createdAt','desc').limit(20).get().catch(()=>({docs:[]}));
-  const reviewsArr = reviewsSnap.docs.map(d=> ({id:d.id, ...d.data()}));
-
-  {
-    const el = $('#my-orders');
-    if (el) el.innerHTML = ordersArr.map(o=>`
-      <div class="item">
-        <div class="row spread"><b>주문 #${esc(o.id)}</b><span class="badge">${esc(o.status||'-')}</span></div>
-        <div class="small">총액 ${fmt(o.total||0)} PAW</div>
-        <div class="kit"><button class="btn outline" onclick="openReview('${o.id}')">리뷰 작성</button></div>
-      </div>
-    `).join("") || `<div class="small">예약 내역 없음</div>`;
-  }
-
-  {
-    const el = $('#my-vouchers');
-    if (el) el.innerHTML = vouchersArr.map(v=>{
-      const elId = 'qr_'+v.id;
-      const expiry = v.expiry?.toDate?.() || v.expiry;
-      const html = `
-        <div class="card">
-          <div class="row spread"><b>바우처 ${esc(v.id)}</b><span class="badge">${esc(v.status||'-')}</span></div>
-          <div class="small">유효기간: ${expiry ? new Date(expiry).toLocaleDateString() : "-"}</div>
-          <div id="${elId}" style="padding:8px;background:#fff;border-radius:12px;margin-top:8px"></div>
-          <div class="kit"><button class="btn outline" onclick="markRedeemed('${v.id}')">사용완료 표시(데모)</button></div>
-        </div>`;
-      setTimeout(()=>{
-        const payload = JSON.stringify({ id:v.id, tokenId:v.tokenId, proof:'DEMO-SIGN' });
-        window.QRCode?.toCanvas(document.getElementById(elId), payload, { width:180 }, (err)=> err && console.error(err));
-      },0);
-      return html;
-    }).join("") || `<div class="small">보유 바우처 없음</div>`;
-  }
-
-  {
-    const el = $('#my-reviews');
-    if (el) el.innerHTML = reviewsArr.map(r=>`
-      <div class="item"><b>${"★".repeat(r.rating||0)}</b><div class="small">${esc(r.text||"")}</div></div>
-    `).join("") || `<div class="small">작성한 리뷰 없음</div>`;
-  }
-}
-
-window.markRedeemed = async function(voucherId){
-  await db.collection('vouchers').doc(voucherId).set({
-    status:'redeemed', redeemedAt: firebase.firestore.FieldValue.serverTimestamp()
-  },{merge:true});
-  toast('바우처 사용완료(데모)');
-  refreshMy();
-};
-window.openReview = async function(orderId){
-  const rating = Number(prompt('평점 (1~5):','5'));
-  if(!(rating>=1 && rating<=5)) return;
-  const text = prompt('리뷰 내용을 입력하세요:','좋은 서비스였습니다!');
-  if(!text) return;
-  await db.collection('reviews').add({
-    orderId, userUid: State.user.uid, rating, text,
-    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-  });
-  toast('리뷰 등록됨');
-  refreshMy();
-};
-
-/* =========================
- * 7) 큰언니 콘솔
- * ========================= */
-async function refreshAgentState(){
-  if(!State.user){
-    const s = $('#agent-status'); if (s) s.textContent = '상태: 로그인 필요';
-    return;
-  }
-  const q = await db.collection('agents').where('ownerUid','==',State.user.uid).limit(1).get();
-  State.agentDoc = q.docs[0] ? { id:q.docs[0].id, ...q.docs[0].data() } : null;
-  const st = State.agentDoc ? (State.agentDoc.approved?'승인됨':(State.agentDoc.kycStatus||'심사중')) : '미가입';
-  const stEl = $('#agent-status'); if (stEl) stEl.textContent = '상태: ' + st;
-  if(State.agentDoc){
-    const doc = State.agentDoc;
-    const setv = (sel, v) => { const el=$(sel); if (el) el.value = v||""; };
-    setv('#agent-name', doc.name);
-    setv('#agent-bio', doc.bio);
-    setv('#agent-region', doc.region);
-    setv('#agent-wallet', doc.wallet);
-    setv('#agent-contact', doc.contact);
-    setv('#agent-messenger', doc.messenger);
-    if (doc.photoURL){
-      const img = $('#agent-photo-preview');
-      if (img) { img.src = doc.photoURL; img.classList.remove('hidden'); }
-    }
+async function loadAgentProfile(user){
+  if(!user) return;
+  var uid=user.uid, ref=db.collection(COL.agents).doc(uid), snap=await ref.get(), statusEl=$('#agent-status');
+  if(snap && snap.exists){
+    var d=snap.data()||{};
+    if($('#agent-name')) $('#agent-name').value=d.displayName||'';
+    if($('#agent-bio')) $('#agent-bio').value=d.bio||'';
+    if($('#agent-region')) $('#agent-region').value=d.city||'';
+    if($('#agent-contact')) $('#agent-contact').value=d.contact||'';
+    if($('#agent-messenger')) $('#agent-messenger').value=d.messenger||'';
+    if($('#agent-wallet')) $('#agent-wallet').value=d.wallet||'';
+    if(d.photoURL && $('#agent-photo-preview')){ var img=$('#agent-photo-preview'); img.src=d.photoURL; img.classList.remove('hidden'); }
+    if(statusEl) statusEl.textContent='상태: '+labelStatus(d.status);
   }else{
-    ['#agent-name','#agent-bio','#agent-region','#agent-wallet','#agent-contact','#agent-messenger'].forEach(s=> { const el=$(s); if (el) el.value=""; });
-    const pv = $('#agent-photo-preview'); if (pv) pv.classList.add('hidden');
+    if(statusEl) statusEl.textContent='상태: 초안';
   }
+  await updateApplyButton(uid);
+}
+function labelStatus(s){ return (s==='applied')?'신청':(s==='approved')?'승인':(s==='rejected')?'반려':'초안'; }
+async function updateApplyButton(uid){
+  var appRef=db.collection(COL.apps).doc(uid), appSnap=await appRef.get(), btn=$('#agent-apply');
+  if(!btn) return;
+  if(appSnap && appSnap.exists){ btn.disabled=true; btn.textContent='신청 완료(중복 신청 불가)'; }
+  else { btn.disabled=false; btn.textContent='로컬 메이트 가입 신청'; }
+}
+async function applyForAgent(user){
+  if(!user){ toast('로그인 후 이용해 주세요.'); return; }
+  var uid=user.uid;
+  await db.runTransaction(async function(tx){
+    var appRef=db.collection(COL.apps).doc(uid), agRef=db.collection(COL.agents).doc(uid);
+    var appSnap=await tx.get(appRef);
+    if(appSnap && appSnap.exists) throw new Error('이미 신청되어 있습니다.');
+    tx.set(appRef,{ uid:uid, email:user.email||'', status:'pending', appliedAt:TS() });
+    tx.set(agRef,{ status:'applied', updatedAt:TS() },{ merge:true });
+  });
+  toast('가입 신청이 접수되었습니다.');
+  await updateApplyButton(uid);
+  var s=$('#agent-status'); if(s) s.textContent='상태: 신청';
 }
 
-const agentPhotoInput = $('#agent-photo');
-if (agentPhotoInput) agentPhotoInput.addEventListener('change', async (ev)=>{
-  const file = ev.target.files?.[0];
-  if (!file){ return; }
-  const url = URL.createObjectURL(file);
-  const img = $('#agent-photo-preview');
-  if (img){ img.src = url; img.classList.remove('hidden'); }
-});
+/* ========== 10) 홈: 공지 + 추천 로컬메이트(강력 폴백) ========== */
+async function renderHome(){ await Promise.all([renderNotices(), renderFeaturedAgents()]); }
 
-const agentSaveBtn = $('#agent-save');
-if (agentSaveBtn) agentSaveBtn.addEventListener('click', async ()=>{
-  if(!State.user){ toast('로그인이 필요합니다.'); return; }
+async function renderNotices(){
+  var nl=$('#notice-list'); if(!nl) return;
+  try{
+    var snap=await db.collection(COL.notices).orderBy('ts','desc').limit(10).get();
+    if(!snap.empty){
+      nl.innerHTML=snap.docs.map(function(d){ var x=d.data()||{}; return '<div class="row"><strong>'+esc(x.title||'')+'</strong><div class="muted small">'+esc(x.body||'')+'</div></div>'; }).join('');
+    }else nl.innerHTML='<div class="muted small">등록된 공지가 없습니다.</div>';
+  }catch(e){ nl.innerHTML='<div class="muted small">공지 불러오기 오류</div>'; }
+}
 
-  // 사진 업로드 (선택)
-  let photoURL = State.agentDoc?.photoURL || null;
-  const file = $('#agent-photo')?.files?.[0] || null;
-  if (file && store){
+function isIndexError(err){ if(!err) return false; var msg=String(err.message||''); return (err.code===9)||(msg.indexOf('requires an index')>=0)||(msg.indexOf('FAILED_PRECONDITION')>=0); }
+
+function buildAgentCard(d, isMine, ownerId){
+  var badge=isMine ? '<span class="pill" style="margin-left:6px">내 프로필</span>' : (d.status==='approved'?'':'<span class="pill" style="margin-left:6px">'+esc(labelStatus(d.status))+'</span>');
+  var img=d.photoURL||'https://placehold.co/300x200?text=Local+Mate';
+  var bio=(d.bio||'').split('\n')[0]; if(bio.length>80) bio=bio.slice(0,77)+'…';
+  return ''+
+  '<div class="card">'+
+    '<img src="'+esc(img)+'" alt="" style="width:100%;height:160px;object-fit:cover;border-radius:12px"/>'+
+    '<div class="col" style="gap:6px;margin-top:8px">'+
+      '<div class="row" style="align-items:center"><strong>'+esc(d.displayName||'로컬 메이트')+'</strong>'+badge+'</div>'+
+      '<div class="muted small">'+esc(d.city||'')+'</div>'+
+      '<div class="muted small">'+esc(bio)+'</div>'+
+      '<div class="row gap wrap" style="margin-top:8px">'+
+        '<button class="btn outline small" data-action="view-items" data-owner="'+esc(ownerId)+'" data-kind="product">상품 보기</button>'+
+        '<button class="btn subtle small"  data-action="view-items" data-owner="'+esc(ownerId)+'" data-kind="post">블로그 보기</button>'+
+      '</div>'+
+    '</div>'+
+  '</div>';
+}
+
+async function renderFeaturedAgents(){
+  var grid=$('#agent-grid'), rgrid=$('#region-grid');
+  if(grid) grid.innerHTML='<div class="muted small">로딩 중…</div>';
+  if(rgrid) rgrid.innerHTML='';
+
+  var docs=[];
+
+  // 1) 기본: 승인 + updatedAt desc
+  try{
+    var snap=await db.collection(COL.agents)
+      .where('status','==','approved')
+      .orderBy('updatedAt','desc')
+      .limit(20)
+      .get();
+    docs = snap.empty ? [] : snap.docs.slice();
+  }catch(e1){
+    console.warn('[agents] primary failed → fallback-1', e1);
+    // 2) 폴백1: 승인필터 제거 + updatedAt 정렬
     try{
-      const ref = store.ref().child(`agents/${State.user.uid}/profile_${Date.now()}.jpg`);
-      await ref.put(file);
-      photoURL = await ref.getDownloadURL();
-    }catch(e){ console.warn('사진 업로드 실패(무시):', e); }
-  }
-
-  const payload = {
-    ownerUid: State.user.uid,
-    name: $('#agent-name')?.value||"큰언니",
-    bio: $('#agent-bio')?.value||"",
-    region: $('#agent-region')?.value||"",
-    wallet: $('#agent-wallet')?.value||State.wallet||null,
-    contact: $('#agent-contact')?.value||"",
-    messenger: $('#agent-messenger')?.value||"",
-    photoURL,
-    rating: State.agentDoc?.rating || 5.0,
-    score: State.agentDoc?.score || 50,
-    kycStatus: State.agentDoc?.kycStatus || 'pending',
-    approved: State.agentDoc?.approved || false,
-    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-  };
-
-  let id = State.agentDoc?.id;
-  if (id) await db.collection('agents').doc(id).set(payload,{merge:true});
-  else { const ref = await db.collection('agents').add(payload); id = ref.id; }
-  toast('큰언니 프로필이 저장되었습니다.');
-  await refreshAgentState();
-});
-
-/* 나의 상품/포스트 간단 리스트 */
-const listPostsBtn = $('#btn-list-posts');
-if (listPostsBtn) listPostsBtn.addEventListener('click', async ()=>{
-  if(!State.user || !State.agentDoc){ toast('큰언니 프로필 필요'); return; }
-  const qs = await db.collection('posts').where('agentId','==',State.agentDoc.id).orderBy('createdAt','desc').limit(50).get().catch(async e=>{
-    const q2 = await db.collection('posts').where('agentId','==',State.agentDoc.id).limit(100).get();
-    return { docs: q2.docs.sort((a,b)=> getTS(b.data().createdAt)-getTS(a.data().createdAt)) };
-  });
-  const el = $('#agent-posts');
-  if (el) el.innerHTML = qs.docs.map(d=>{
-    const p=d.data();
-    return `<div class="item">
-      <div class="row spread"><b>${esc(p.title)}</b>${p.price?`<span class="price">${fmt(p.price)} PAW</span>`:''}</div>
-      <div class="small">${esc((p.body||"").slice(0,120))}...</div>
-    </div>`;
-  }).join("") || `<div class="small">작성한 상품/포스트 없음</div>`;
-});
-
-/* 상품/포스트 등록 */
-const postCreateBtn = $('#post-create');
-if (postCreateBtn) postCreateBtn.addEventListener('click', async ()=>{
-  if(!State.user || !State.agentDoc){ toast('큰언니 프로필 필요'); return; }
-  const title = $('#post-title')?.value||"";
-  const body  = $('#post-body')?.value||"";
-  const price = Number($('#post-price')?.value||"0") || null;
-  const tags  = ($('#post-tags')?.value||"").split(',').map(s=>s.trim()).filter(Boolean);
-  if(!title){ toast('제목을 입력하세요.'); return; }
-  const regionId = await ensureRegion(State.agentDoc.region);
-
-  // 이미지 업로드
-  const files = $('#post-images')?.files || [];
-  const urls = [];
-  if (files.length && store){
-    for (const f of files){
+      var snap2=await db.collection(COL.agents)
+        .orderBy('updatedAt','desc')
+        .limit(20)
+        .get();
+      docs = snap2.empty ? [] : snap2.docs.slice();
+    }catch(e2){
+      console.warn('[agents] fallback-1 failed → fallback-2', e2);
+      // 3) 폴백2: 정렬 제거(최소 표시)
       try{
-        const ref = store.ref().child(`posts/${State.agentDoc.id}/${Date.now()}_${f.name}`);
-        await ref.put(f);
-        urls.push(await ref.getDownloadURL());
-      }catch(e){ console.warn('이미지 업로드 실패(무시):', e); }
+        var snap3=await db.collection(COL.agents).limit(20).get();
+        docs = snap3.empty ? [] : snap3.docs.slice();
+      }catch(e3){
+        console.error('[agents] fallback-2 failed', e3);
+      }
     }
   }
 
-  await db.collection('posts').add({
-    agentId: State.agentDoc.id, agentWallet: State.agentDoc.wallet||null,
-    regionId, region: State.agentDoc.region||"",
-    type: price ? 'product' : 'post',
-    title, body, images: urls, price, tags,
-    status:'open',
-    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-  });
-  toast('상품/포스트가 등록되었습니다.');
-});
-
-async function ensureRegion(name){
-  if(!name) return null;
-  const q = await db.collection('regions').where('name','==',name).limit(1).get();
-  if (q.docs[0]) return q.docs[0].id;
-  const ref = await db.collection('regions').add({
-    name, country:'VN', lang:['ko','en','vi'],
-    desc:`${name} 지역 소개`, createdAt: firebase.firestore.FieldValue.serverTimestamp()
-  });
-  return ref.id;
-}
-
-/* 파이프라인 */
-async function renderAgentPipes(){
-  if(!State.user || !State.agentDoc){
-    const pi = $('#pipe-inquiries'); if (pi) pi.innerHTML = `<div class="small">큰언니 프로필 저장 후 사용 가능합니다.</div>`;
-    const po = $('#pipe-orders');    if (po) po.innerHTML = `<div class="small">큰언니 프로필 저장 후 사용 가능합니다.</div>`;
-    return;
-  }
-  const [inq, ord] = await Promise.all([
-    db.collection('inquiries').where('agentId','==',State.agentDoc.id).orderBy('createdAt','desc').limit(20).get().catch(async _=>{
-      const qs = await db.collection('inquiries').where('agentId','==',State.agentDoc.id).limit(60).get();
-      return { docs: qs.docs.sort((a,b)=> getTS(b.data().createdAt)-getTS(a.data().createdAt)).slice(0,20) };
-    }),
-    db.collection('orders').where('agentId','==',State.agentDoc.id).orderBy('createdAt','desc').limit(20).get().catch(async _=>{
-      const qs = await db.collection('orders').where('agentId','==',State.agentDoc.id).limit(60).get();
-      return { docs: qs.docs.sort((a,b)=> getTS(b.data().createdAt)-getTS(a.data().createdAt)).slice(0,20) };
-    }),
-  ]);
-  {
-    const el = $('#pipe-inquiries');
-    if (el) el.innerHTML = inq.docs.map(d=>{
-      const i=d.data();
-      return `<div class="item">
-        <div class="row spread"><b>${esc(i.message)}</b><span class="badge">${i.status||'-'}</span></div>
-        <div class="kit">
-          <button class="btn outline" onclick="sendQuote('${d.id}')">견적 제시</button>
-        </div>
-      </div>`;
-    }).join("") || `<div class="small">문의 없음</div>`;
-  }
-
-  {
-    const el = $('#pipe-orders');
-    if (el) el.innerHTML = ord.docs.map(d=>{
-      const o=d.data();
-      return `<div class="item">
-        <div class="row spread"><b>주문 #${esc(o.id)}</b><span class="badge">${esc(o.status||'-')}</span></div>
-        <div class="small">총액 ${fmt(o.total||0)} PAW</div>
-        <div class="kit"><button class="btn outline" onclick="confirmOrder('${o.id}')">체크아웃/정산(데모)</button></div>
-      </div>`;
-    }).join("") || `<div class="small">예약 없음</div>`;
-  }
-}
-window.sendQuote = async function(inquiryId){
-  if(!State.user || !State.agentDoc) return;
-  const amount = Number(prompt('견적 금액(PAW):','100'));
-  if(!(amount>0)) return;
-  await db.collection('quotes').add({
-    inquiryId, agentId: State.agentDoc.id, items:[], total: amount, currency:'PAW',
-    terms:'기본 약관', expiresAt: new Date(Date.now()+1000*60*60*24*3),
-    status:'제출', createdAt: firebase.firestore.FieldValue.serverTimestamp()
-  });
-  await db.collection('inquiries').doc(inquiryId).set({ status:'견적' },{merge:true});
-  toast('견적이 제출되었습니다.');
-};
-window.confirmOrder = async function(orderId){
-  await db.collection('orders').doc(orderId).set({ status:'완료' },{merge:true});
-  toast('체크아웃 처리(데모).');
-  renderAgentPipes();
-};
-
-/* =========================
- * 8) 운영자 콘솔
- * ========================= */
-async function requireAdmin(){ if (State.isAdmin) return true; toast('운영자만 접근 가능합니다.'); routeTo('home'); return false; }
-
-async function renderAdmin(){
-  if(!(await requireAdmin())) return;
-
-  const MAX = 50;
-  // approved=false
-  let listA=[];
-  try{
-    const q = await db.collection('agents').where('approved','==',false).orderBy('updatedAt','desc').limit(MAX).get();
-    listA = q.docs;
-  }catch(e){
-    console.warn('agents(approved=false) local-sort fallback:', e?.message||e);
-    const q = await db.collection('agents').where('approved','==',false).limit(MAX).get();
-    listA = q.docs.sort((a,b)=> getTS(b.data().updatedAt)-getTS(a.data().updatedAt));
-  }
-  // kycStatus=review
-  let listB=[];
-  try{
-    const q2 = await db.collection('agents').where('kycStatus','==','review').orderBy('updatedAt','desc').limit(MAX).get();
-    listB = q2.docs;
-  }catch(e){
-    console.warn('agents(kycStatus=review) local-sort fallback:', e?.message||e);
-    const q2 = await db.collection('agents').where('kycStatus','==','review').limit(MAX).get();
-    listB = q2.docs.sort((a,b)=> getTS(b.data().updatedAt)-getTS(a.data().updatedAt));
-  }
-
-  const uniq = new Map();
-  [...listA,...listB].forEach(d=> uniq.set(d.id,d));
-  const docs = [...uniq.values()];
-
-  {
-    const el = $('#admin-agents');
-    if (el) el.innerHTML =
-      docs.map(d=>{
-        const a=d.data();
-        return `<div class="item">
-          <div class="row spread"><b>${esc(a.name||'-')} (${esc(a.region||'-')})</b>
-            <span class="badge">${esc(a.kycStatus||'-')}</span></div>
-          <div class="small">${esc(a.bio||'')}</div>
-          <div class="kit">
-            <button class="btn" onclick="approveAgent('${d.id}')">승인</button>
-            <button class="btn outline" onclick="rejectAgent('${d.id}')">반려</button>
-          </div>
-        </div>`;
-      }).join("") || `<div class="small">대기 중인 큰언니 없음</div>`;
-  }
-
-  // 신청 히스토리
-  let apps=[];
-  try{
-    const snap = await db.collection('agent_applications').orderBy('createdAt','desc').limit(50).get();
-    apps = snap.docs.map(d=> ({ id:d.id, ...d.data() }));
-  }catch(e){
-    const snap = await db.collection('agent_applications').limit(200).get();
-    apps = snap.docs.map(d=> ({ id:d.id, ...d.data() }))
-      .sort((a,b)=> getTS(b.createdAt)-getTS(a.createdAt)).slice(0,50);
-  }
-  {
-    const el = $('#admin-agent-apps');
-    if (el) el.innerHTML =
-      (apps.map(it=>{
-        const when = it.createdAt?.toDate?.() || it.createdAt || null;
-        return `<div class="item">
-          <div class="row spread"><b>${esc((it.action||'submitted').toUpperCase())}</b>
-            <span class="badge">${esc(it.status||'-')}</span></div>
-          <div class="small">
-            agentId: ${esc(it.agentId||'-')} · region: ${esc(it.region||'-')}<br/>
-            ownerUid: ${esc(it.ownerUid||'-')}
-            ${it.actionByEmail? ` · by ${esc(it.actionByEmail)}`:''}
-            ${when? ` · ${new Date(when).toLocaleString()}`:''}
-          </div>
-        </div>`;
-      }).join("") || `<div class="small">신청 내역 없음</div>`);
-  }
-
-  // 바우처/공지 렌더
-  const vs = await db.collection('vouchers').orderBy('createdAt','desc').limit(20).get().catch(()=>({docs:[]}));
-  {
-    const el = $('#v-issued');
-    if (el) el.innerHTML = vs.docs.map(d=>{
-      const v=d.data();
-      return `<div class="item">
-        <div class="row spread"><b>${esc(v.id)}</b><span class="badge">${esc(v.status||'-')}</span></div>
-        <div class="small">scope: ${esc(v.scope||"-")} · face: ${esc(v.faceValue||0)} · expiry: ${new Date(v.expiry?.toDate?.()||v.expiry).toLocaleDateString()}</div>
-      </div>`;
-    }).join("") || `<div class="small">발행 없음</div>`;
-  }
-
-  const ns = await db.collection('notices').orderBy('startAt','desc').limit(20).get().catch(()=>({docs:[]}));
-  {
-    const el = $('#n-list');
-    if (el) el.innerHTML = ns.docs.map(d=>{
-      const n=d.data();
-      return `<div class="item"><b>${esc(n.title)}</b><div class="small">${esc(n.body||"")}</div></div>`;
-    }).join("") || `<div class="small">공지 없음</div>`;
-  }
-}
-
-window.approveAgent = async function(agentId){
-  if(!(await requireAdmin())) return;
-  await db.collection('agents').doc(agentId).set({
-    approved:true, kycStatus:'approved',
-    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-  },{merge:true});
-
-  const ag = await db.collection('agents').doc(agentId).get();
-  await db.collection('agent_applications').add({
-    agentId,
-    ownerUid: ag.exists ? (ag.data().ownerUid||null) : null,
-    action:'approved', status:'approved',
-    actionByUid: State.user?.uid||null, actionByEmail: State.user?.email||null,
-    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-  });
-
-  toast('승인 완료');
-  await refreshHome();
-  await renderAdmin();
-};
-window.rejectAgent = async function(agentId){
-  if(!(await requireAdmin())) return;
-  await db.collection('agents').doc(agentId).set({
-    approved:false, kycStatus:'rejected',
-    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-  },{merge:true});
-
-  const ag = await db.collection('agents').doc(agentId).get();
-  await db.collection('agent_applications').add({
-    agentId,
-    ownerUid: ag.exists ? (ag.data().ownerUid||null) : null,
-    action:'rejected', status:'rejected',
-    actionByUid: State.user?.uid||null, actionByEmail: State.user?.email||null,
-    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-  });
-
-  toast('반려 처리');
-  await renderAdmin();
-};
-
-/* bigSisterApplications (옵션) */
-const showBigSisterBtn = $('#btn-show-bigsister-applications');
-if (showBigSisterBtn) showBigSisterBtn.addEventListener('click', async ()=>{
-  if(!(await requireAdmin())) return;
-  const wrap = $('#bigSisterApplicationsList');
-  if (!wrap) return;
-  wrap.innerHTML = '<h3>큰언니 심사 신청 내역</h3>';
-  try{
-    let items=[];
+  // 로그인 중이면 내 프로필 병합
+  if(State.user){
     try{
-      const snap = await db.collection('bigSisterApplications').orderBy('timestamp','desc').limit(100).get();
-      items = snap.docs.map(d=> ({ id:d.id, ...d.data() }));
-    }catch(e){
-      const snap = await db.collection('bigSisterApplications').limit(200).get();
-      items = snap.docs.map(d=> ({ id:d.id, ...d.data() }))
-        .sort((a,b)=> getTS(b.timestamp)-getTS(a.timestamp));
+      var my=await db.collection(COL.agents).doc(State.user.uid).get();
+      if(my && my.exists && !docs.some(function(d){ return d.id===my.id; })){
+        docs.unshift(my);
+      }
+    }catch(e){}
+  }
+
+  // 카드 렌더 + 버튼 핸들러
+  if(grid){
+    if(!docs.length){
+      grid.innerHTML='<div class="muted small">표시할 로컬 메이트가 아직 없습니다. "로컬 메이트 허브"에서 지역 소개 카드를 저장해 보세요.</div>';
+    }else{
+      grid.innerHTML=docs.map(function(doc){
+        var d=doc.data()||{}; var isMine=(State.user && doc.id===State.user.uid);
+        return buildAgentCard(d, isMine, doc.id);
+      }).join('');
     }
-    if (!items.length){ wrap.innerHTML += '<p>신청 내역이 없습니다.</p>'; return; }
-    items.forEach(it=>{
-      const when = it.timestamp?.toDate?.() || it.timestamp || null;
-      const div = document.createElement('div');
-      div.className = 'card application-item';
-      div.innerHTML = `
-        <h4>신청자: ${esc(it.name||'N/A')}</h4>
-        <p>이메일: ${esc(it.email||'N/A')}</p>
-        <p>전화번호: ${esc(it.phone||'N/A')}</p>
-        <p>상태: ${esc(it.status||'N/A')}</p>
-        <p>신청일: ${when? new Date(when).toLocaleString() : 'N/A'}</p>
-        <p>소개: ${esc(it.bio||'N/A')}</p>
-        <p>지역: ${esc(it.region||'N/A')}</p>
-        <button class="btn approve-btn" data-id="${it.id}" data-status="approved">승인</button>
-        <button class="btn subtle reject-btn" data-id="${it.id}" data-status="rejected">거절</button>`;
-      wrap.appendChild(div);
-    });
-    wrap.querySelectorAll('.approve-btn,.reject-btn').forEach(btn=>{
-      btn.addEventListener('click', async (ev)=>{
-        if(!(await requireAdmin())) return;
-        const id = ev.currentTarget.dataset.id;
-        const st = ev.currentTarget.dataset.status;
-        await db.collection('bigSisterApplications').doc(id).set({ status: st },{merge:true});
-        toast(`신청 ${id} → ${st}`);
-        const reBtn = $('#btn-show-bigsister-applications');
-        if (reBtn) reBtn.click();
+    if(!grid._bound){
+      grid._bound=true;
+      grid.addEventListener('click', function(e){
+        var btn=e.target.closest('[data-action="view-items"]'); if(!btn) return;
+        routeTo('search', { owner: btn.getAttribute('data-owner'), kind: btn.getAttribute('data-kind') });
       });
+    }
+  }
+
+  // 지역 그리드(도시별 집계)
+  if(rgrid && docs.length){
+    var map={};
+    docs.forEach(function(doc){
+      var d=doc.data()||{}; var key=(d.city||'기타').trim()||'기타';
+      var cur=map[key]||{count:0,sample:d}; cur.count+=1; map[key]=cur;
     });
-  }catch(e){ console.error('Error fetching bigSisterApplications:', e); wrap.innerHTML += '<p>신청 내역을 불러오는 데 오류가 발생했습니다.</p>'; }
-});
-
-/* 바우처/공지 */
-const vIssueBtn = $('#v-issue');
-if (vIssueBtn) vIssueBtn.addEventListener('click', async ()=>{
-  if(!(await requireAdmin())) return;
-  const scope = $('#v-region')?.value||"global";
-  const face  = Number($('#v-face')?.value||"0");
-  const exp   = $('#v-exp')?.value ? new Date($('#v-exp').value) : new Date(Date.now()+1000*60*60*24*30);
-  const id = 'V' + Math.random().toString(36).slice(2,9);
-  await db.collection('vouchers').doc(id).set({
-    id, scope, faceValue: face, rules:{}, expiry: exp, supply:1, claimed:0, redeemed:0, status:'issued',
-    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-  });
-  toast('바우처 발행 완료');
-  renderAdmin();
-});
-const nPublishBtn = $('#n-publish');
-if (nPublishBtn) nPublishBtn.addEventListener('click', async ()=>{
-  if(!(await requireAdmin())) return;
-  const title = $('#n-title')?.value||"";
-  const body  = $('#n-body')?.value||"";
-  if(!title){ toast('제목을 입력하세요.'); return; }
-  await db.collection('notices').add({
-    title, body, pinned:false,
-    startAt: new Date(Date.now()-60000),
-    endAt: new Date(Date.now()+1000*60*60*24*7),
-    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-  });
-  const t = $('#n-title'); if (t) t.value = '';
-  const b = $('#n-body');  if (b) b.value  = '';
-  toast('공지 발행됨');
-  renderAdmin();
-});
-
-/* 데모 시드/퍼지 */
-const seedDemoBtn  = $('#seed-demo');
-if (seedDemoBtn)  seedDemoBtn.addEventListener('click', seedDemo);
-const purgeDemoBtn = $('#purge-demo');
-if (purgeDemoBtn) purgeDemoBtn.addEventListener('click', purgeDemo);
-const seedDemoFooterBtn  = $('#seed-demo-footer');
-if (seedDemoFooterBtn)  seedDemoFooterBtn.addEventListener('click', ()=> { const x=$('#seed-demo'); if (x) x.click(); });
-const purgeDemoFooterBtn = $('#purge-demo-footer');
-if (purgeDemoFooterBtn) purgeDemoFooterBtn.addEventListener('click', ()=> { const x=$('#purge-demo'); if (x) x.click(); });
-
-async function seedDemo(){
-  await db.collection('regions').add({ name:'다낭', country:'VN', lang:['ko','en','vi'], desc:'해양/미식/액티비티 허브', createdAt: firebase.firestore.FieldValue.serverTimestamp() });
-  await db.collection('regions').add({ name:'동호이', country:'VN', lang:['ko','en','vi'], desc:'동굴/자연/로컬', createdAt: firebase.firestore.FieldValue.serverTimestamp() });
-
-  const ownerUid = State.user?.uid || 'demo';
-  const agentRef = await db.collection('agents').add({
-    ownerUid,
-    name:'KE 다낭팀', bio:'공항픽업/투어/생활지원', region:'다낭', wallet:null,
-    rating:4.9, score:88, badges:['행정지원','교통지원'], kycStatus:'approved', approved:true,
-    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-  });
-  await db.collection('posts').add({
-    agentId: agentRef.id, region:'다낭', regionId: null,
-    type:'product', title:'다낭 시내 투어 (4h)', body:'전용차량+가이드 포함. 일정 커스텀 가능.', price:120, tags:['다낭','투어','교통'], status:'open',
-    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-  });
-  await db.collection('notices').add({
-    title:'파일럿 운영 중', body:'문의/예약은 데모 흐름을 통해 시험해보세요.',
-    startAt:new Date(Date.now()-3600_000), endAt:new Date(Date.now()+3600_000*24*30),
-    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-  });
-  toast('데모 데이터 시드 완료');
-  refreshHome();
-}
-
-async function purgeDemo(){
-  const colls = ['regions','agents','posts','inquiries','quotes','orders','vouchers','reviews','notices','agent_applications'];
-  for(const c of colls){
-    const qs = await db.collection(c).limit(50).get();
-    const batch = db.batch();
-    qs.forEach(d=> batch.delete(d.ref));
-    await batch.commit();
+    var list=Object.keys(map).map(function(k){ return { city:k, count:map[k].count, sample:map[k].sample }; });
+    list.sort(function(a,b){ return b.count-a.count; });
+    var top=list.slice(0,6);
+    rgrid.innerHTML=top.map(function(x){
+      var img=(x.sample && x.sample.photoURL) || 'https://placehold.co/300x200?text='+encodeURIComponent(x.city);
+      return '<div class="card"><img src="'+esc(img)+'" alt="" style="width:100%;height:120px;object-fit:cover;border-radius:12px"/><div class="row spread" style="margin-top:8px"><strong>'+esc(x.city)+'</strong><span class="pill">'+x.count+'</span></div></div>';
+    }).join('');
   }
-  toast('데모 데이터 삭제 완료');
-  refreshHome(); refreshMy(); renderAdmin(); renderAgentPipes();
 }
 
-/* =========================
- * 9) 헤더 버튼 바인딩 & 인증 상태
- * ========================= */
-const btnGoogle = $('#btn-google'); if (btnGoogle) btnGoogle.addEventListener('click', loginGoogle);
-const btnLogout = $('#btn-logout'); if (btnLogout) btnLogout.addEventListener('click', logout);
-const btnWallet = $('#btn-wallet'); if (btnWallet) btnWallet.addEventListener('click', connectWallet);
+/* ========== 11) 검색 화면(작성자/종류 필터) ========== */
+async function renderSearch(){
+  var grid=$('#search-grid'); if(!grid) return;
+  var qEl=$('#search-q');
+  var params=parseHashQuery();
+  var owner=params.owner||'', kind=params.kind||'';
 
-$$('a[data-link]').forEach(a=>{
-  a.addEventListener('click',(e)=>{
-    e.preventDefault();
-    const href = a.getAttribute('href') || '#/';
-    location.hash = href.replace('#/','') ? href : '#/';
-  });
-});
+  if(qEl){
+    if(owner && kind) qEl.placeholder='필터: 작성자/종류로 검색 결과';
+    else if(owner)   qEl.placeholder='필터: 작성자별 검색 결과';
+    else if(kind)    qEl.placeholder='필터: 종류별 검색 결과';
+    else             qEl.placeholder='지역/테마/태그';
+  }
 
-auth.onAuthStateChanged(async (user)=>{
-  State.user = user || null;
-  State.isAdmin = user ? (await computeIsAdmin(user)) : false;
-  $$('[data-admin-only]').forEach(el=> el.classList.toggle('hidden', !State.isAdmin));
+  grid.innerHTML='<div class="muted small">검색 중…</div>';
+
+  var ref=db.collection(COL.items);
+  if(owner) ref=ref.where('ownerUid','==', owner);
+  if(kind)  ref=ref.where('kind','==', kind);
+  ref=ref.orderBy('ts','desc').limit(60);
+
+  try{
+    var snap=await ref.get();
+    renderItemsIntoGrid(snap.docs, grid);
+  }catch(e){
+    if(isIndexError(e)){
+      try{
+        var r=db.collection(COL.items); var q=r;
+        if(owner) q=q.where('ownerUid','==', owner);
+        if(kind)  q=q.where('kind','==', kind);
+        var s2=await q.limit(200).get();
+        var docs=s2.docs.slice().sort(function(a,b){ return (b.data().ts||0)-(a.data().ts||0); });
+        renderItemsIntoGrid(docs, grid);
+        toast('인덱스가 없어 임시 정렬로 표시합니다. Firestore 인덱스를 생성해 주세요.');
+      }catch(e2){ console.error(e2); grid.innerHTML='<div class="muted small">검색 실패</div>'; }
+    }else{ console.error(e); grid.innerHTML='<div class="muted small">검색 실패</div>'; }
+  }
+
+  var run=$('#search-run');
+  if(run && !run._bound){
+    run._bound=true;
+    run.addEventListener('click', function(){
+      toast('텍스트 검색은 추후 확장 예정입니다.');
+    });
+  }
+}
+function renderItemsIntoGrid(docs, grid){
+  if(!docs || !docs.length){ grid.innerHTML='<div class="muted small">검색 결과가 없습니다.</div>'; return; }
+  var html=docs.map(function(doc){
+    var d=doc.data()||{};
+    var img=(d.images && d.images[0]) || 'https://placehold.co/600x360?text=No+Image';
+    var right=(d.kind==='product')?((d.price!=null?d.price:'-')+' PAW'):'포스트';
+    var tag=(d.tags||[]).slice(0,3).join(', ');
+    return ''+
+      '<div class="card">'+
+        '<img src="'+esc(img)+'" alt="" style="width:100%;height:160px;object-fit:cover;border-radius:12px"/>'+
+        '<div class="col" style="gap:6px;margin-top:8px">'+
+          '<div class="row spread"><strong>'+esc(d.title||'')+'</strong><small class="muted">'+esc(right)+'</small></div>'+
+          '<div class="muted small">'+esc(tag)+'</div>'+
+          '<div class="muted small">'+esc((d.body||'').split('\n')[0].slice(0,80))+'</div>'+
+        '</div>'+
+      '</div>';
+  }).join('');
+  grid.innerHTML=html;
+}
+
+/* ========== 12) 아이템 생성/목록(메이트 콘솔) ========== */
+function resolveKind(){
+  var kindEl=document.getElementById('post-kind');
+  if(kindEl){ var v=(kindEl.value||'').toLowerCase(); if(v==='product'||v==='post') return v; }
+  var raw=$('#post-price')?$('#post-price').value:''; return (raw===''||raw==null)?'post':'product';
+}
+async function createItem(user){
+  if(!user){ toast('로그인 후 이용해 주세요.'); return; }
+  var uid=user.uid;
+  var title=$('#post-title')?$('#post-title').value.trim():'';
+  var body=$('#post-body')?$('#post-body').value.trim():'';
+  var raw=$('#post-price')?$('#post-price').value:''; var price=(raw===''||raw==null)?null:Number(raw);
+  var tagsStr=$('#post-tags')?$('#post-tags').value:''; var tags=tagsStr.split(',').map(function(s){return s.trim();}).filter(Boolean);
+  if(!title){ toast('제목을 입력해 주세요.'); return; }
+
+  var kind=resolveKind();
+  var docRef=db.collection(COL.items).doc();
+  var images=[];
+  try{
+    var fi=document.getElementById('post-images');
+    var list= fi && fi.files ? fi.files : [];
+    for(var i=0;i<list.length;i++){
+      var f=list[i], path='users/'+uid+'/posts/'+docRef.id+'/'+Date.now()+'_'+f.name;
+      var ref=st.ref().child(path); await ref.put(f); images.push(await ref.getDownloadURL());
+    }
+  }catch(e){ console.warn('image upload skipped', e); }
+
+  await docRef.set({ ownerUid:uid, kind:kind, title:title, body:body, price:price, tags:tags, images:images, ts:Date.now(), updatedAt:TS() });
+  toast(kind==='product'?'상품이 등록되었습니다.':'포스트가 등록되었습니다.');
+  await listMyItems(uid);
+}
+async function listMyItems(uid){
+  var box=$('#agent-posts'); if(!box) return; box.innerHTML='<div class="muted">불러오는 중…</div>';
+  try{
+    var q=db.collection(COL.items).where('ownerUid','==', uid).orderBy('ts','desc').limit(50);
+    var snap=await q.get(); await renderItemsSnap(snap, box);
+  }catch(e){
+    if(isIndexError(e)){
+      var snap2=await db.collection(COL.items).where('ownerUid','==', uid).limit(50).get();
+      var docs=snap2.docs.slice().sort(function(a,b){ return (b.data().ts||0)-(a.data().ts||0); });
+      renderItemsDocs(docs, box);
+      toast('인덱스가 없어 임시 정렬로 표시합니다. Firestore 인덱스를 생성해 주세요.');
+    }else{ console.error(e); box.innerHTML='<div class="muted">목록 로드 오류</div>'; }
+  }
+}
+async function renderItemsSnap(snap, box){ if(!snap||snap.empty){ box.innerHTML='<div class="muted">등록된 항목이 없습니다.</div>'; return; } renderItemsDocs(snap.docs, box); }
+function renderItemsDocs(docs, box){
+  var html=''; docs.forEach(function(doc){
+    var d=doc.data()||{}, thumb=(d.images&&d.images.length)?d.images[0]:'https://placehold.co/600x360?text=No+Image';
+    var right=(d.kind==='product')?((d.price!=null?d.price:'-')+' PAW'):'포스트';
+    html+='<div class="row item-row"><img src="'+esc(thumb)+'" alt="" style="width:120px;height:72px;object-fit:cover;border-radius:8px"/><div class="col"><div class="row spread"><strong>'+esc(d.title||'')+'</strong><small class="muted">'+esc(right)+'</small></div><div class="muted small">'+esc((d.tags||[]).slice(0,5).join(', '))+'</div></div></div>';
+  }); box.innerHTML=html;
+}
+
+/* ========== 13) 운영자 화면 ========== */
+async function renderAdmin(){
+  var box=$('#admin-agents'); if(box){
+    try{
+      var snap=await db.collection(COL.agents).orderBy('updatedAt','desc').limit(100).get();
+      if(!snap.empty){
+        box.innerHTML=snap.docs.map(function(doc){ var d=doc.data()||{}; return '<div class="row"><strong>'+esc(d.displayName||doc.id)+'</strong><span class="muted small">상태: '+esc(labelStatus(d.status))+'</span></div>'; }).join('');
+      }else box.innerHTML='<div class="muted">대상 없음</div>';
+    }catch(e){ box.innerHTML='<div class="muted">로드 오류</div>'; }
+  }
+  var btn=$('#btn-show-bigsister-applications');
+  if(btn && !btn._bound){
+    btn._bound=true;
+    btn.addEventListener('click', async function(){
+      var list=$('#bigSisterApplicationsList'); if(!list) return;
+      try{
+        var snap=await db.collection(COL.apps).orderBy('appliedAt','desc').limit(100).get();
+        if(!snap.empty){
+          list.innerHTML=snap.docs.map(function(doc){ var d=doc.data()||{}; return '<div class="row"><strong>'+esc(d.uid||doc.id)+'</strong><span class="muted small">상태: '+esc(d.status||'pending')+'</span></div>'; }).join('');
+        }else list.innerHTML='<div class="muted">신청 내역이 없습니다.</div>';
+      }catch(e){ list.innerHTML='<div class="muted">로드 오류</div>'; }
+    });
+  }
+}
+
+/* ========== 14) 라우트 렌더링 ========== */
+async function renderRoute(){
+  var r=hashRoute();
+  $$('.view').forEach(function(v){ v.classList.add('hidden'); });
+
+  var id = (r==='admin') ? 'view-admin' : ('view-'+r);
+  var v=document.getElementById(id) || document.getElementById('view-home');
+  if (v) v.classList.remove('hidden');
+
+  if (r==='agent'){
+    if (State.user){
+      await loadAgentProfile(State.user);
+      bindAgentConsoleEvents(State.user);
+      await listMyItems(State.user.uid);
+    } else {
+      toast('로그인 후 이용해 주세요.');
+    }
+  } else if (r==='admin'){
+    if (State.isAdmin) await renderAdmin();
+    else { toast('운영자 전용입니다.'); routeTo('home'); }
+  } else if (r==='home'){
+    await renderHome();
+  } else if (r==='search'){
+    await renderSearch();
+  }
+}
+
+/* ========== 15) 이벤트 바인딩 ========== */
+function bindHeaderEvents(){
+  var lg=$('#btn-google'); if(lg && !lg._bound){ lg._bound=true; lg.addEventListener('click', loginGoogle); }
+  var lo=$('#btn-logout'); if(lo && !lo._bound){ lo._bound=true; lo.addEventListener('click', logout); }
+  var wc=$('#btn-wallet'); if(wc && !wc._bound){ wc._bound=true; wc.addEventListener('click', connectWallet); }
+}
+function bindAgentConsoleEvents(user){
+  var s=$('#agent-save'); if(s && !s._bound){ s._bound=true; s.addEventListener('click', function(){ saveAgentProfile(user); }); }
+  var a=$('#agent-apply'); if(a && !a._bound){ a._bound=true; a.addEventListener('click', function(){ applyForAgent(user); }); }
+  var c=$('#post-create'); if(c && !c._bound){ c._bound=true; c.addEventListener('click', function(){ createItem(user); }); }
+  var l=$('#btn-list-posts'); if(l && !l._bound){ l._bound=true; l.addEventListener('click', function(){ listMyItems(user.uid); }); }
+}
+
+/* ========== 16) 인증 감시 → UI/권한/실시간 role 반영 ========== */
+auth.onAuthStateChanged(async function(user){
+  State.user=user||null;
+  State.isAdmin=user ? (await computeIsAdmin(user)) : false;
+  updateAuthUI();
+
+  if (_unsubRole) { try { _unsubRole(); } catch(e){} _unsubRole=null; }
   if (user){
-    const g = $('#btn-google'); if (g) g.classList.add('hidden');
-    const l = $('#btn-logout'); if (l) l.classList.remove('hidden');
-    const up=$('#user-photo'); if (up && user.photoURL){ up.src=user.photoURL; up.classList.remove('hidden'); }
-  }else{
-    const g = $('#btn-google'); if (g) g.classList.remove('hidden');
-    const l = $('#btn-logout'); if (l) l.classList.add('hidden');
-    const up=$('#user-photo'); if (up) up.classList.add('hidden');
+    _unsubRole = db.collection('users').doc(user.uid).onSnapshot(async function(){
+      State.isAdmin = await computeIsAdmin(user);
+      updateAuthUI();
+      if (hashRoute()==='admin' && !State.isAdmin) routeTo('home');
+    });
   }
-  await afterAuthRender();
+
+  if (hashRoute()==='agent' && user){
+    await loadAgentProfile(user);
+    bindAgentConsoleEvents(user);
+    await listMyItems(user.uid);
+  }
 });
 
-/* =========================
- * 10) 초기 진입
- * ========================= */
-async function afterAuthRender(){
-  await refreshHome();
-  await refreshMy();
-  await refreshAgentState();
-
-  // 홈이 기본
+/* ========== 17) 진입 ========== */
+function ready(){
+  bindHeaderEvents();
+  handleRedirectResult().catch(console.warn); // 리다이렉트 폴백 결과 수신
   if (!location.hash) routeTo('home');
-  await renderRoute();
+  renderRoute().catch(console.error);
 }
-
-// 첫 렌더
-afterAuthRender().catch(console.error);
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', ready); else ready();

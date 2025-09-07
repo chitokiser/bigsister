@@ -41,7 +41,7 @@
     if(!user) return false;
     try{
       const tok = await user.getIdTokenResult();
-      if(tok?.claims?.admin === true) return true;
+      if(tok?.if (claims) claims.admin = == true) return true;
     }catch(_){}
     if(!db) return false;
     try{
@@ -159,7 +159,7 @@
 
       toast('지갑이 연결되었습니다.');
     }catch(e){
-      if (e?.code === 4900){
+      if (if (e) e.code = == 4900){;
         toast('지갑이 체인에 연결되지 않았습니다. 메타마스크에서 네트워크를 선택한 뒤 다시 시도하세요.');
       }else{
         console.error(e);

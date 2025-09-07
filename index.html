@@ -4,269 +4,50 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
   <meta name="theme-color" content="#0C0F14"/>
-  <title>BigSister</title>
-
+  <title>LocaMate · 홈</title>
   <link rel="stylesheet" href="./styles.css"/>
-
-  <!-- UI helper -->
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 
   <!-- Firebase (compat) -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
-
-  <!-- Ethers (지갑/온체인) -->
+  <!-- ethers -->
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.12.1/dist/ethers.umd.min.js"></script>
-
-  <!-- QRCode -->
+  <!-- QRCode (필요시) -->
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <!-- 설정 -->
+  <script src="./src/config.js"></script>
 </head>
 <body>
-<header class="site-header">
-  <div class="container row spread header-inner">
-    <div class="row header-left">
-      <!-- 로고 30x30 -->
-      <a class="logo-wrap" href="#/">
-        <img id="site-logo" src="./assets/logo.png" alt="Logo" width="30" height="30"
-             onerror="this.classList.add('hidden')" />
-      </a>
+  <div id="app-header"></div>
 
-      <nav class="nav">
-   
-        <div id="nav-links" class="nav-links">
-          <a href="#/" data-link>홈</a>
-          <a href="#/search" data-link>검색</a>
-          <a href="#/my" data-link>마이</a>
-          <a href="#/agent" data-link>큰언니 콘솔</a>
-          <a href="#/admin" data-link data-admin-only class="hidden">운영자</a>
+  <main class="container">
+    <section class="view active">
+      <div class="hero card">
+        <div>
+          <h1><b>로컬 메이트</b></h1>
+          <p class="muted" style="margin-top:.25rem">현지의 일상을 함께하는 동행</p>
         </div>
-      </nav>
-    </div>
-
-    <div class="row header-right">
-      <button id="btn-google" class="btn">Google 로그인</button>
-      <button id="btn-logout" class="btn subtle hidden">로그아웃</button>
-      <button id="btn-wallet" class="btn outline">지갑 연결</button>
-      <span id="tier-pill" class="pill hidden">티어: -</span>
-      <img id="user-photo" class="avatar hidden" alt="user"/>
-    </div>
-  </div>
-</header>
-
-
-
-  <!-- 홈 -->
-  <section id="view-home" class="view active">
-    <div class="hero card">
-      <div>
-        <h1>지역 <b>큰언니</b>와 함께하는 여행·생활 지원</h1>
-      </div>
-      <div class="row gap wrap">
-        <input id="home-q" type="search" placeholder="지역/키워드 검색" class="input">
-        <button id="home-search" class="btn">검색</button>
-      </div>
-    </div>
-
-    <h2 class="section-title">추천 언니네 지역</h2>
-    <div id="region-grid" class="grid cards-3"></div>
-
-    <h2 class="section-title">인기 큰언니</h2>
-    <div id="agent-grid" class="grid cards-3"></div>
-
-    <h2 class="section-title">공지</h2>
-    <div id="notice-list" class="list"></div>
-  </section>
-
-  <!-- 검색 -->
-  <section id="view-search" class="view">
-    <h2 class="section-title">검색 결과</h2>
-    <div class="row gap wrap">
-      <input id="search-q" type="search" placeholder="지역/테마/예산/언어/태그" class="input">
-      <button id="search-run" class="btn">검색</button>
-    </div>
-    <div id="search-grid" class="grid cards-3"></div>
-  </section>
-
-  <!-- 상품 상세 -->
-  <section id="view-detail" class="view">
-    <div id="detail-wrap" class="card"></div>
-  </section>
-
-  <!-- 마이 -->
-  <section id="view-my" class="view">
-    <h2 class="section-title">내 예약</h2>
-    <div id="my-orders" class="list"></div>
-
-    <h2 class="section-title">내 바우처(QR)</h2>
-    <div id="my-vouchers" class="grid cards-2"></div>
-
-    <h2 class="section-title">내 리뷰</h2>
-    <div id="my-reviews" class="list"></div>
-  </section>
-
-  <!-- 큰언니 콘솔 -->
-  <section id="view-agent" class="view">
-    <div class="row spread">
-      <h2 class="section-title">큰언니 콘솔</h2>
-      <span id="agent-status" class="pill">상태: -</span>
-    </div>
-
-    <div class="grid two">
-      <!-- 프로필/지역 카드 -->
-      <div class="card">
-        <h3>지역 소개 카드</h3>
-        <div class="form">
-          <label class="label">프로필사진</label>
-          <div class="row gap" style="align-items:center">
-            <img id="agent-photo-preview" class="hidden" alt="preview"
-                 style="width:84px;height:84px;border-radius:12px;object-fit:cover;background:#f3f4f6"/>
-            <input id="agent-photo" class="input" type="file" accept="image/*"/>
-          </div>
-
-          <label class="label">큰언니팀/프로필명</label>
-          <input id="agent-name" class="input" placeholder="큰언니 팀/프로필명"/>
-
-          <label class="label">소개 / 전문분야</label>
-          <textarea id="agent-bio" class="input" placeholder="소개/전문분야"></textarea>
-
-          <label class="label">지역명</label>
-          <input id="agent-region" class="input" placeholder="예: 다낭"/>
-
-          <label class="label">연락처</label>
-          <input id="agent-contact" class="input" placeholder="예: +84-xxx-xxxx"/>
-
-          <label class="label">메신저 상담</label>
-          <input id="agent-messenger" class="input" placeholder="예: Kakao @id / Telegram @id"/>
-
-          <label class="label">정산지갑</label>
-          <input id="agent-wallet" class="input" placeholder="정산 지갑(선택)" />
-
-          <div class="row gap">
-            <button id="agent-save" class="btn">저장/갱신</button>
-            <button id="agent-apply" class="btn outline">큰언니 승인가입 신청</button>
-            <button id="btn-list-posts" class="btn subtle">상품 및 포스트 보기</button>
-          </div>
+        <div class="row gap wrap">
+          <input id="home-q" type="search" placeholder="지역/키워드 검색" class="input">
+          <a class="btn" href="search.html">검색</a>
         </div>
       </div>
 
-      <!-- 상품/포스트 등록 -->
-      <div class="card">
-        <h3>상품/포스트 등록</h3>
-        <div class="form">
-          <label class="label">제목</label>
-          <input id="post-title" class="input" placeholder="제목"/>
+      <h2 class="section-title">추천 로컬 메이트 지역</h2>
+      <div id="region-grid" class="grid cards-3"></div>
 
-          <label class="label">본문</label>
-          <textarea id="post-body" class="input" placeholder="블로그처럼 본문 작성 (줄바꿈 유지)"></textarea>
+      <h2 class="section-title">인기 로컬 메이트</h2>
+      <div id="agent-grid" class="grid cards-3"></div>
 
-          <label class="label">사진 추가</label>
-          <input id="post-images" class="input" type="file" multiple accept="image/*"/>
+      <h2 class="section-title">공지</h2>
+      <div id="notice-list" class="list"></div>
+    </section>
+  </main>
 
-          <label class="label">가격(PAW) — 상품일 경우만 입력</label>
-          <input id="post-price" class="input" type="number" placeholder="가격(PAW), 포스트면 비워두기"/>
+  <div id="app-footer"></div>
 
-          <label class="label">태그(쉼표 구분)</label>
-          <input id="post-tags" class="input" placeholder="다낭,투어,교통"/>
-
-          <button id="post-create" class="btn">등록</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 나의 상품/포스트 리스트 -->
-    <div class="card">
-      <h3>상품 및 포스트</h3>
-      <div id="agent-posts" class="list"></div>
-    </div>
-
-    <!-- 파이프라인 -->
-    <div class="grid two">
-      <div class="card">
-        <h3>문의/견적 파이프라인</h3>
-        <div id="pipe-inquiries" class="list"></div>
-      </div>
-      <div class="card">
-        <h3>예약/정산</h3>
-        <div id="pipe-orders" class="list"></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- 운영자 콘솔 -->
-  <section id="view-admin" class="view">
-    <h2 class="section-title">운영자 콘솔</h2>
-
-    <div class="card">
-      <h3>승인 대기 / 심사 목록</h3>
-      <div id="admin-agents" class="list"></div>
-    </div>
-
-    <div class="card">
-      <h3>신청 히스토리</h3>
-      <div id="admin-agent-apps" class="list"></div>
-    </div>
-
-    <div class="row gap" style="margin:12px 0">
-      <button id="btn-show-bigsister-applications" class="btn">큰언니 심사 신청 내역 보기</button>
-    </div>
-    <div id="bigSisterApplicationsList" class="list"></div>
-
-    <div class="grid two">
-      <div class="card">
-        <h3>바우처 발행</h3>
-        <div class="form">
-          <input id="v-region" class="input" placeholder="범위(regionId or global)"/>
-          <input id="v-face" class="input" type="number" placeholder="금액/퍼센트 값"/>
-          <input id="v-exp" class="input" type="date" placeholder="만료일"/>
-          <button id="v-issue" class="btn">발행(오프체인 문서)</button>
-        </div>
-        <div id="v-issued" class="list"></div>
-      </div>
-
-      <div class="card">
-        <h3>공지</h3>
-        <div class="form">
-          <input id="n-title" class="input" placeholder="제목"/>
-          <textarea id="n-body" class="input" placeholder="내용"></textarea>
-          <button id="n-publish" class="btn">공지 발행</button>
-        </div>
-        <div id="n-list" class="list"></div>
-      </div>
-    </div>
-
-    <div class="row gap">
-      <button id="seed-demo" class="btn subtle">데모 데이터 시드</button>
-      <button id="purge-demo" class="btn subtle">데모 삭제</button>
-    </div>
-  </section>
-
-</main>
-
-<footer class="site-footer">
-  <div class="container row spread">
-    <small class="muted">© NomadLocal MVP • 큰언니 인증제 · 온체인 결제/티어 · QR 바우처</small>
-    <div class="row gap">
-      <button id="seed-demo-footer" class="btn subtle">데모 데이터 시드</button>
-      <button id="purge-demo-footer" class="btn subtle">데모 삭제</button>
-    </div>
-  </div>
-</footer>
-
-<!-- ✅ 스크립트 정리: config만 일반 스크립트, 나머지는 단일 진입점(app.js) 모듈 -->
-<script src="./src/config.js?v=4"></script>
-<script type="module" src="./src/app.js?v=4"></script>
-
-<script>
-  // 모바일 내비 토글
-  document.getElementById('btn-open-nav')?.addEventListener('click', () => {
-    document.getElementById('nav-links')?.classList.toggle('open');
-  });
-  // 푸터 버튼 → 동일 기능 트리거
-  document.getElementById('seed-demo-footer')?.addEventListener('click', ()=> document.getElementById('seed-demo')?.click());
-  document.getElementById('purge-demo-footer')?.addEventListener('click', ()=> document.getElementById('purge-demo')?.click());
-</script>
+  <script type="module" src="./src/pages/home.js"></script>
 </body>
 </html>

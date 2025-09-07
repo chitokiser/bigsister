@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+  <meta name="theme-color" content="#0C0F14"/>
+  <title>LocaMate · 운영자</title>
+  <link rel="stylesheet" href="./styles.css"/>
+
+  <!-- Firebase (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+
+  <!-- 프로젝트 설정/초기화/헤더 -->
+  <script src="./src/config.js"></script>
+  <script src="./src/firebase-init.js"></script>
+  <script src="./src/ui/header-loader.js"></script>
+</head>
+<body>
+  <div id="app-header"></div>
+
+  <main class="container">
+    <h2 class="section-title">운영자 대시보드</h2>
+
+    <section class="card">
+      <div class="row" style="align-items:center">
+        <h3 style="margin:0">로컬메이트 승인 대기</h3>
+        <button id="btn-refresh" class="btn small" style="margin-left:auto">새로고침</button>
+      </div>
+      <div id="pending-list" class="list"></div>
+    </section>
+
+    <section class="card" style="margin-top:16px">
+      <h3 style="margin:0">전체 에이전트</h3>
+      <div id="all-list" class="list"></div>
+    </section>
+  </main>
+
+  <!-- Admin 페이지 로직 (ESM) -->
+  <script type="module" src="./src/admin/admin.js"></script>
+</body>
+</html>
