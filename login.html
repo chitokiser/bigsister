@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>로그인 · LocaMate</title>
+  <link rel="stylesheet" href="./styles.css"/>
+
+  <!-- Firebase compat -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+
+  <!-- 설정 -->
+  <script src="./src/config.js"></script>
+</head>
+<body>
+  <div class="container" style="max-width:640px;padding-top:40px">
+    <h1 style="margin:0 0 16px"><b>로그인</b></h1>
+    <p class="muted" style="margin:0 0 20px">구글 계정 또는 이메일/비밀번호로 로그인하세요.</p>
+
+    <div id="msg" class="muted" style="margin-bottom:12px"></div>
+
+    <div class="card" style="padding:16px">
+      <div class="row wrap gap">
+        <button id="btn-google" class="btn" type="button">Google로 계속</button>
+      </div>
+
+      <hr style="border:0;border-top:1px solid var(--border);margin:16px 0"/>
+
+      <form id="form-email" onsubmit="return false;">
+        <label class="muted">이메일</label>
+        <input id="email" class="input" type="email" placeholder="you@example.com" required style="width:100%;margin:6px 0 12px"/>
+
+        <label class="muted">비밀번호</label>
+        <input id="password" class="input" type="password" placeholder="최소 6자" required minlength="6" style="width:100%;margin:6px 0 16px"/>
+
+        <div class="row gap wrap">
+          <button id="btn-signin"  class="btn"        type="button">로그인</button>
+          <button id="btn-signup"  class="btn subtle" type="button">회원가입</button>
+          <button id="btn-reset"   class="btn subtle" type="button">비밀번호 재설정 메일 보내기</button>
+        </div>
+      </form>
+    </div>
+
+    <p style="margin-top:16px"><a class="btn link" href="index.html">← 홈으로</a></p>
+  </div>
+
+  <script type="module" src="./src/pages/login.js"></script>
+</body>
+</html>

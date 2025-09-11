@@ -1,168 +1,141 @@
+/* styles.css — LocaMate clean responsive theme */
+
+/* ===== Tokens ===== */
 :root{
-  --bg:#0b0d14; --card:rgba(255,255,255,0.06); --border:rgba(255,255,255,0.12);
-  --text:#e9eefc; --muted:#a9b1c7; --accent:#7c3aed;
-  --radius:16px; --radius-lg:22px;
+  --bg:#0C0F14;
+  --surface:#0f1320;
+  --text:#e9eefc;
+  --muted:#98a2b3;
+  --primary:#7c3aed;
+  --primary2:#2563eb;
+  --card:rgba(255,255,255,.06);
+  --border:rgba(255,255,255,.12);
+  --radius:18px;
+  --space:clamp(12px,2vw,20px);
 }
+
+/* ===== Reset/Base ===== */
 *{box-sizing:border-box}
-html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,Arial}
-a{color:inherit;text-decoration:none;opacity:.95}
-a:hover{opacity:1}
-.container{max-width:1100px;margin:0 auto;padding:18px}
-.row{display:flex;align-items:center}
-.row.gap{gap:12px}
-.row.spread{justify-content:space-between}
-.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
-.grid.two{grid-template-columns:repeat(2,1fr)}
-@media (max-width:920px){.grid,.grid.two{grid-template-columns:1fr}}
-.site-header{position:sticky;top:0;background:rgba(11,13,20,.7);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);z-index:10}
-.logo{font-weight:800;letter-spacing:.3px}
-.nav a{padding:8px 10px;border-radius:10px}
-.nav a:hover{background:var(--card)}
-.site-footer{border-top:1px solid var(--border);margin-top:28px}
-.view{display:none;margin-top:18px}
-.view.active{display:block}
-.hero{padding:28px;border:1px solid var(--border);border-radius:var(--radius-lg);background:linear-gradient(120deg,rgba(124,58,237,.18),rgba(37,99,235,.12))}
-.section-title{margin:18px 0 8px 0}
-.card{border:1px solid var(--border);border-radius:var(--radius);padding:16px;background:var(--card)}
-.list>.item,.grid>.card{border:1px solid var(--border);border-radius:var(--radius);padding:14px;background:rgba(255,255,255,.03)}
-.btn{border:0;background:var(--accent);color:#fff;padding:9px 12px;border-radius:12px;font-weight:600;cursor:pointer}
-.btn:hover{filter:brightness(1.05)}
-.btn.outline{background:transparent;border:1px solid var(--accent);color:var(--accent)}
-.btn.subtle{background:transparent;border:1px solid var(--border);color:var(--text)}
-.btn.block{display:block;width:100%}
-.input, textarea{width:100%;padding:10px;border-radius:12px;border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--text)}
-.badge{font-size:12px;padding:4px 8px;border-radius:999px;border:1px solid var(--border);color:var(--muted)}
-.pill{font-size:12px;padding:6px 10px;border-radius:999px;background:rgba(124,58,237,.15);border:1px solid rgba(124,58,237,.35)}
-.hidden{display:none !important}
-.avatar{width:32px;height:32px;border-radius:50%;border:1px solid var(--border)}
-.tag{border:1px solid var(--border);border-radius:999px;padding:3px 8px;margin-right:6px;color:var(--muted);font-size:12px}
-.price{font-weight:700}
-.kit{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
-.card h3{margin:6px 0 10px}
-.small{font-size:12px;color:var(--muted)}
-/* ===== Header base ===== */
-.site-header { position: sticky; top: 0; z-index: 50; background: #0C0F14; border-bottom: 1px solid #1f2937; }
-.header-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 10px; }
-.logo-wrap { display: inline-flex; align-items: center; gap: 8px; }
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,Roboto,Apple SD Gothic Neo,Arial,sans-serif}
+img{max-width:100%;display:block}
+a{color:inherit}
 
-/* ===== Nav common ===== */
-.nav { position: relative; margin-left: auto; }
-#btn-open-nav { display: inline-flex; align-items: center; justify-content: center; min-width: 40px; }
+/* ===== Layout ===== */
+.container{width:min(1120px,100%);margin:0 auto;padding:0 var(--space)}
+.row{display:flex;gap:12px}
+.row.wrap{flex-wrap:wrap}
+.row.center{align-items:center}
+.row.between{justify-content:space-between}
+.gap{gap:var(--space)}
+.muted{color:var(--muted)}
 
-/* 패널 기본(모바일) — 숨김 상태 */
-.nav-links {
-  position: fixed; top: 0; right: 0; bottom: 0; width: min(84vw, 360px);
-  transform: translateX(100%); opacity: 0; transition: transform .25s ease, opacity .25s ease;
-  background: #0C0F14; color: #fff; border-left: 1px solid #1f2937; z-index: 1000;
-  display: flex; flex-direction: column; padding: 16px; gap: 14px;
+/* ===== Header ===== */
+.header{
+  position:sticky; top:0; z-index:40;
+  backdrop-filter:saturate(1.2) blur(6px);
+  background:linear-gradient(180deg, rgba(12,15,20,.85), rgba(12,15,20,.6) 60%, transparent);
+  border-bottom:1px solid var(--border);
 }
-/* 패널 오픈 */
-.nav-links.open { transform: translateX(0); opacity: 1; }
-/* 패널 내부 영역 */
-.nav-header { display: flex; align-items: center; justify-content: space-between; }
-.nav-primary { display: flex; flex-direction: column; gap: 8px; padding: 8px 0 12px; }
-.nav-primary a { padding: 10px 8px; border-radius: 10px; }
-.nav-primary a.active { background: #111827; }
-.nav-actions { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
-.avatar { width: 28px; height: 28px; border-radius: 999px; object-fit: cover; }
+.header .inner{display:flex;align-items:center;justify-content:space-between;padding:10px 0}
+.header .brand{display:flex;align-items:center;gap:10px;text-decoration:none}
+.logo-30{width:30px;height:30px}
+.desktop-only{display:flex;gap:18px}
+.mobile-only{display:none}
 
-/* ===== 데스크톱(≥960px): 가로 메뉴로 전환 ===== */
-@media (min-width: 960px) {
-  #btn-open-nav { display: none; }
-  .nav-links {
-    position: static; width: auto; height: auto; transform: none; opacity: 1;
-    background: transparent; border: 0; padding: 0; gap: 18px; flex-direction: row; align-items: center;
-  }
-  .nav-header, #btn-close-nav { display: none; }
-  .nav-primary { flex-direction: row; gap: 14px; padding: 0; }
-  .nav-actions { flex-direction: row; gap: 10px; margin-left: 24px; margin-top: 0; }
-  .nav-primary a { padding: 6px 8px; }
+@media (max-width: 860px){
+  .desktop-only{display:none}
+  .mobile-only{display:inline-flex}
 }
 
-/* ===== 헤더 기본 ===== */
-.site-header { position: sticky; top: 0; z-index: 50; background:#0C0F14; border-bottom:1px solid #1f2937; }
-.header-inner { display:flex; align-items:center; justify-content:space-between; height:60px; gap:10px; }
-.logo-wrap { display:inline-flex; align-items:center; gap:8px; }
-
-/* ===== 백드롭 ===== */
-.nav-backdrop{
-  position:fixed; inset:0; background:rgba(0,0,0,.45);
-  backdrop-filter:saturate(160%) blur(6px);
-  opacity:0; pointer-events:none; transition:opacity .25s ease; z-index:900;
-}
-.nav-backdrop.open{ opacity:1; pointer-events:auto; }
-
-/* ===== 드로어(모바일 기본) ===== */
-.nav { position:relative; margin-left:auto; }
-#btn-open-nav { display:inline-flex; align-items:center; justify-content:center; min-width:40px; }
-
+/* ===== Drawer (mobile navigation) ===== */
 .nav-links{
-  position:fixed; top:0; right:0; height:100dvh; width:min(84vw,360px);
-  transform:translateX(100%); opacity:0; transition:transform .25s ease, opacity .25s ease;
-  background:#0C0F14; color:#fff; border-left:1px solid #1f2937;
-  box-shadow: -16px 0 40px rgba(0,0,0,.35);
-  z-index:1001; display:flex; flex-direction:column; gap:14px;
-  padding: max(14px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)) 16px;
-  border-top-left-radius:14px; border-bottom-left-radius:14px;
+  position:fixed; inset:0; display:flex; align-items:flex-end;
+  background:rgba(0,0,0,.45); z-index:50;
 }
-.nav-links.open{ transform:translateX(0); opacity:1; }
-
-.nav-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }
-.nav-header strong{ font-size:1.05rem; }
-#btn-close-nav{ line-height:1; }
-
-.nav-primary{ display:flex; flex-direction:column; gap:6px; padding:8px 0 12px; }
-.nav-primary a{
-  padding:12px 10px; border-radius:10px; line-height:1; display:block;
-  transition:background .15s ease, color .15s ease;
+.nav-links[aria-hidden="true"]{display:none}
+.nav-links .drawer{
+  margin-left:auto; width:min(420px,100%); height:100%;
+  background:var(--surface); border-left:1px solid var(--border);
+  padding:16px; display:flex; flex-direction:column; gap:12px;
 }
-.nav-primary a:hover{ background:#111827; }
-.nav-primary a.active{ background:#111827; font-weight:600; }
-
-.nav-actions{
-  margin-top:auto; display:flex; flex-direction:column; gap:8px;
-  padding-top:12px; border-top:1px dashed #1f2937;
-}
-.btn.block{ width:100%; }
-.row.center{ display:flex; align-items:center; justify-content:center; }
-.gap-6{ gap:6px; }
-.avatar{ width:28px; height:28px; border-radius:999px; object-fit:cover; }
-
-/* ===== 데스크톱(≥960px) : 상단 가로 메뉴로 전환 ===== */
-@media (min-width:960px){
-  #btn-open-nav{ display:none; }
-  .nav-backdrop{ display:none; }
-  .nav-links{
-    position:static; height:auto; width:auto; transform:none; opacity:1;
-    background:transparent; border:0; box-shadow:none; padding:0; gap:18px;
-    flex-direction:row; align-items:center; border-radius:0;
-  }
-  .nav-header, #btn-close-nav{ display:none; }
-  .nav-primary{ flex-direction:row; gap:14px; padding:0; }
-  .nav-primary a{ padding:6px 8px; }
-  .nav-actions{ flex-direction:row; gap:10px; margin-left:18px; margin-top:0; border:0; padding-top:0; }
+.nav-links .list .list-item{
+  display:block; padding:12px 0; border-bottom:1px solid var(--border); text-decoration:none;
 }
 
-/* ===== 본문 스크롤 잠금 ===== */
-body.no-scroll{ overflow:hidden; }
-/* ===== Modal: Email Auth ===== */
-.modal-backdrop{
-  position:fixed; inset:0; background:rgba(0,0,0,.5);
-  backdrop-filter:saturate(160%) blur(6px);
-  opacity:0; pointer-events:none; transition:opacity .2s ease; z-index:1200;
+/* ===== Buttons / Inputs ===== */
+.input{
+  background:transparent; color:var(--text);
+  border:1px solid var(--border); border-radius:12px;
+  padding:10px 12px; min-width:220px;
 }
-.modal-backdrop.open{ opacity:1; pointer-events:auto; }
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:8px;
+  color:#fff; border:0; border-radius:12px; cursor:pointer;
+  padding:10px 14px; background:linear-gradient(135deg,var(--primary) 0%,var(--primary2) 100%);
+}
+.btn.subtle{background:transparent;border:1px solid var(--border);color:var(--text)}
+.btn.link{background:transparent;border:0; color:#a0b9ff; text-decoration:none; padding:0}
+.btn:hover{filter:brightness(1.05)}
 
-.modal-sheet{
-  position:fixed; left:50%; top:50%; transform:translate(-50%,-52%) scale(.98);
-  width:min(92vw,420px); max-height:86vh; overflow:auto;
-  background:#0C0F14; color:#fff; border:1px solid #1f2937; border-radius:14px;
-  padding:16px; z-index:1201; opacity:0; pointer-events:none; transition:opacity .2s ease, transform .2s ease;
-  box-shadow:0 20px 40px rgba(0,0,0,.35);
+/* ===== Sections ===== */
+.section-title{margin:22px 0 10px; font-size:clamp(18px,2vw,22px); font-weight:800}
+
+/* ===== Cards ===== */
+.card{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  overflow:clip;
 }
-.modal-sheet.open{ opacity:1; pointer-events:auto; transform:translate(-50%,-50%) scale(1); }
-.modal-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
-.tabs .tab-btn{ padding:8px 10px; border-radius:10px; }
-.tabs .tab-btn.active{ background:#111827; font-weight:600; }
-.tab-pane{ display:none; margin-top:8px; }
-.tab-pane.active{ display:block; }
+.hero.card{padding:clamp(14px,2vw,20px); display:flex; gap:var(--space); flex-wrap:wrap; align-items:center; justify-content:space-between}
+
+/* ===== Responsive Grid ===== */
+.grid{
+  --card-min:280px; /* 카드 최소 폭 (페이지마다 조정 가능) */
+  display:grid; gap:clamp(12px,1.8vw,18px);
+  grid-template-columns:repeat(auto-fill, minmax(var(--card-min), 1fr));
+  align-items:stretch;
+}
+#region-grid{ --card-min:240px; }
+#agent-grid{ --card-min:280px; }
+
+/* ===== Agent Card ===== */
+.agent-card{display:flex; flex-direction:column}
+.agent-card .media{width:100%; aspect-ratio:16/16; overflow:hidden; background:#111}
+.agent-card .media img{width:100%; height:100%; object-fit:contain}
+.agent-card .content{padding:clamp(12px,1.6vw,16px)}
+.agent-card h3{margin:0 0 4px; font-size:clamp(16px,1.3vw,18px); font-weight:800}
+.agent-card .muted{color:var(--muted); font-size:.95em}
+.agent-card p{
+  margin:8px 0 0; opacity:.95;
+  display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
+}
+
+/* ===== Region (link) Card ===== */
+.link.card{display:block; padding:clamp(14px,1.8vw,18px); text-decoration:none}
+.link.card:hover{outline:1px solid rgba(255,255,255,.18)}
+
+/* ===== Lists ===== */
+.list .list-item{padding:12px 0; border-bottom:1px solid var(--border)}
+.list .title{font-weight:700;margin-bottom:4px}
+
+/* ===== Small helpers ===== */
+.badge{display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px; background:rgba(255,255,255,.07); border:1px solid var(--border); font-size:.9em}
+/* LocalMate 버튼 */
+.lm-btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:.4rem;
+  padding:.4rem .7rem;border:1px solid rgba(255,255,255,.18);
+  border-radius:10px;text-decoration:none;color:inherit;opacity:.95;
+  transition:opacity .2s ease;
+}
+.lm-btn:hover{opacity:1}
+.lm-btn.primary{border-color:transparent;background:rgba(255,255,255,.12)}
+
+.lm-btn-subtle{
+  padding:4px 8px; font-size:.8em; background:rgba(255,255,255,.1);
+  border:1px solid rgba(255,255,255,.2);
+  border-radius:8px; /* Slightly smaller radius for subtle */
+  color:inherit; text-decoration:none; opacity:.8;
+  transition:opacity .2s ease, background .2s ease;
+}
+.lm-btn-subtle:hover{opacity:1; background:rgba(255,255,255,.15);}

@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+  <title>LocaMate · 상품 정보</title>
+  <link rel="stylesheet" href="./styles.css"/>
+
+  <!-- Firebase Compat SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check-compat.js"></script>
+
+  <!-- 프로젝트 설정 + AppCheck 초기화 -->
+  <script src="./src/config.js"></script>
+  <script>
+    window.FB_APP_CHECK_SITE_KEY = "6LduZMErAAAAAJHFSyn2sQMusMCrjFOpQ0YrrbHz";
+    window.FB_APP_CHECK_DEBUG = true;
+  </script>
+  <script src="./src/firebase-init.js"></script>
+
+  <!-- 공통 헤더/푸터 -->
+  <script defer src="./src/ui/header-loader.js"></script>
+</head>
+<body>
+  <div id="app-header"></div>
+
+  <main class="container">
+    <div id="product-details">
+      <!-- Product details will be rendered here by product.js -->
+    </div>
+
+    <section class="card" style="margin-top:20px">
+      <h3 style="margin:0 0 10px 0">평점 남기기</h3>
+      <div id="rating-display" style="font-size:1.2em; margin-bottom:10px;"></div>
+      <div id="star-rating" style="display:flex; gap:5px;">
+        <span class="star" data-value="1">★</span>
+        <span class="star" data-value="2">★</span>
+        <span class="star" data-value="3">★</span>
+        <span class="star" data-value="4">★</span>
+        <span class="star" data-value="5">★</span>
+      </div>
+      <button id="submit-rating" class="btn" style="margin-top:15px;">평점 제출</button>
+    </section>
+  </main>
+
+  <div id="app-footer"></div>
+
+  <!-- 페이지 스크립트 (모듈) — core.js를 내부에서 import -->
+  <script type="module" src="./src/pages/product.js"></script>
+
+  <script>
+    // Firebase SDKs (re-initialized for this inline script)
+    const firebaseConfig = window.firebaseConfig;
+    const app = firebase.apps.length ? firebase.app() : firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const auth = firebase.auth();
+
+    const $stars = document.querySelectorAll('#star-rating .star');
+    const $submitRatingBtn = document.getElementById('submit-rating');
+    const $ratingDisplay = document.getElementById('rating-display');
+    let selectedRating = 0;
+
+    // Get product ID from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const productId = urlParams.get('id');
+
+    // Star hover and click effects
+    $stars.forEach(star => {
+      star.addEventListener('mouseover', () => {
+        const value = parseInt(star.dataset.value);
+        $stars.forEach((s, i) => {
+          s.style.color = i < value ? 'gold' : 'gray';
+        });
+      });
+
+      star.addEventListener('mouseout', () => {
+        $stars.forEach((s, i) => {
+          s.style.color = i < selectedRating ? 'gold' : 'gray';
+        });
+      });
+
+      star.addEventListener('click', () => {
+        selectedRating = parseInt(star.dataset.value);
+        $stars.forEach((s, i) => {
+          s.style.color = i < selectedRating ? 'gold' : 'gray';
+        });
+        $ratingDisplay.textContent = `선택 평점: ${selectedRating}점`;
+      });
+    });
+
+    // Submit rating
+    $submitRatingBtn.addEventListener('click', async () => {
+      if (selectedRating === 0) {
+        alert('평점을 선택해주세요.');
+        return;
+      }
+      if (!productId) {
+        alert('상품 ID를 찾을 수 없습니다.');
+        return;
+      }
+
+      const user = auth().currentUser;
+      if (!user) {
+        alert('로그인 후 평점을 남길 수 있습니다.');
+        // Optionally redirect to login page
+        return;
+      }
+
+      try {
+        await db.runTransaction(async (transaction) => {
+          const productRef = db.collection('products').doc(productId);
+          const productDoc = await transaction.get(productRef);
+
+          if (!productDoc.exists) {
+            throw new Error('상품을 찾을 수 없습니다.');
+          }
+
+          const currentAvgRating = productDoc.data().avgRating || 0;
+          const currentNumRatings = productDoc.data().numRatings || 0;
+
+          // Check if user has already rated this product
+          const userRatingRef = productRef.collection('ratings').doc(user.uid);
+          const userRatingDoc = await transaction.get(userRatingRef);
+
+          let newNumRatings = currentNumRatings;
+          let newTotalRating = currentAvgRating * currentNumRatings;
+
+          if (userRatingDoc.exists) {
+            // User has rated before, update existing rating
+            const oldRating = userRatingDoc.data().rating;
+            newTotalRating = newTotalRating - oldRating + selectedRating;
+          } else {
+            // New rating from this user
+            newNumRatings = currentNumRatings + 1;
+            newTotalRating = newTotalRating + selectedRating;
+          }
+
+          const newAvgRating = newTotalRating / newNumRatings;
+
+          transaction.update(productRef, {
+            avgRating: newAvgRating,
+            numRatings: newNumRatings
+          });
+          transaction.set(userRatingRef, { rating: selectedRating, userId: user.uid, timestamp: firebase.firestore.FieldValue.serverTimestamp() });
+        });
+        alert('평점이 성공적으로 제출되었습니다!');
+        // Optionally refresh display or disable rating input
+      } catch (error) {
+        console.error('평점 제출 오류:', error);
+        alert(`평점 제출에 실패했습니다: ${error.message}`);
+      }
+    });
+
+    // Initial display of rating (if product.js loads it)
+    // This part might need adjustment depending on how product.js populates details
+    // For now, it's a placeholder. Actual display will be handled by product.js
+    // once it's fixed or if we fetch product details here.
+  </script>
+</body>
+</html>

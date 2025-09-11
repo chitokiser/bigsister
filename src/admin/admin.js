@@ -1,4 +1,4 @@
-import { $, esc, ensureLayout, requireAdmin, db, State } from '../core.js';
+import { $, esc, ensureLayout, requireAdmin, db, State, toast } from '../core.js';
 
 // ===== 유틸 =====
 function labelStatus(s){
@@ -132,11 +132,21 @@ function bindActions(){
     const row = e.target.closest('[data-id]'); if (!row) return;
     const id = row.getAttribute('data-id');
     if (e.target.classList.contains('act-approve')){
-      await setStatus(id, 'approved');
-      await Promise.all([fetchPending(), fetchAll()]);
+      try {
+        await setStatus(id, 'approved');
+        toast('승인 처리 완료');
+        await Promise.all([fetchPending(), fetchAll()]);
+      } catch (err) {
+        toast(`승인 실패: ${err.message || err}`);
+      }
     }else if (e.target.classList.contains('act-reject')){
-      await setStatus(id, 'rejected');
-      await Promise.all([fetchPending(), fetchAll()]);
+      try {
+        await setStatus(id, 'rejected');
+        toast('거절 처리 완료');
+        await Promise.all([fetchPending(), fetchAll()]);
+      } catch (err) {
+        toast(`거절 실패: ${err.message || err}`);
+      }
     }else if (e.target.classList.contains('act-open')){
       location.href = 'localmate.html#'+encodeURIComponent(id);
     }

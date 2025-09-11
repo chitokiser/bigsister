@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
-  <title>LocaMate · 검색</title>
+  <title>LocaMate · 전체 상품</title>
   <link rel="stylesheet" href="./styles.css"/>
 
   <!-- Firebase Compat SDK -->
@@ -28,14 +28,13 @@
   <div id="app-header"></div>
 
   <main class="container">
-    <h2>검색</h2>
-    <input id="search-q" placeholder="owner:UID 또는 키워드" style="width:100%;margin:8px 0"/>
-    <div id="search-grid" class="grid-cards"></div>
+    <h2>전체 상품</h2>
+    <div id="items-grid" class="grid-cards"></div>
   </main>
 
   <div id="app-footer"></div>
 
   <!-- 페이지 스크립트 (모듈) — core.js를 내부에서 import -->
-  <script type="module" src="./src/pages/search.js"></script>
+  <script type="module" src="./src/pages/items.js"></script>
 </body>
 </html>

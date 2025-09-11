@@ -1,45 +1,89 @@
-// /src/ui/header-loader.js
-(async function () {
-  const mount = document.getElementById("app-header");
-  if (!mount) return;
+// /src/ui/header-loader.js — header/footer를 지정 폴더(LM_PARTIALS_BASE)에서만 로드 + 404 없는 폴백
+(function () {
+  "use strict";
 
-  try {
-    const res = await fetch("/header.html", { cache: "no-cache" });
-    mount.innerHTML = await res.text();
-  } catch (e) {
-    console.error("[header-loader] header.html 로드 실패:", e);
-    return;
+  const BASE = (typeof window.LM_PARTIALS_BASE === "string" && window.LM_PARTIALS_BASE.trim())
+    ? window.LM_PARTIALS_BASE.trim()
+    : "partials/"; // 기본값: 현재 페이지 기준 ./partials/
+
+  // BASE 정규화 (끝에 / 보장)
+  const PARTIALS = BASE.endsWith("/") ? BASE : (BASE + "/");
+  const HEADER_URL = PARTIALS + "header.html";
+  const FOOTER_URL = PARTIALS + "footer.html";
+
+  function ensureMount(id, position /* 'start' | 'end' */) {
+    let el = document.getElementById(id);
+    if (!el) {
+      el = document.createElement("div");
+      el.id = id;
+      if (position === "start") document.body.prepend(el);
+      else document.body.appendChild(el);
+    }
+    return el;
   }
 
-  if (!window.firebase) return console.error("[header-loader] Firebase 먼저 로드 필요");
-  if (!window.AuthUI)   return console.error("[header-loader] /src/auth-ui.js 를 포함하세요.");
+  function fallbackHeader() {
+    return `
+      <header style="padding:12px 16px;border-bottom:1px solid #222;background:#0b0d12;color:#eee">
+        <div style="display:flex;align-items:center;gap:12px;max-width:1080px;margin:0 auto">
+          <a href="index.html" style="font-weight:800;color:#fff;text-decoration:none">LocaMate</a>
+          <nav style="margin-left:auto;display:flex;gap:10px">
+            <a href="index.html" style="color:#ddd;text-decoration:none">홈</a>
+            <a href="localmate.html" style="color:#ddd;text-decoration:none">내 콘솔</a>
+            <a href="search.html" style="color:#ddd;text-decoration:none">검색</a>
+            <a href="admin.html" style="color:#ddd;text-decoration:none">운영자</a>
+          </nav>
+        </div>
+      </header>`;
+  }
 
-  const auth = firebase.auth();
-  const lnkConsole = mount.querySelector('a[href="/localmate.html"]');
-  const btnLogin   = mount.querySelector("#btn-login");
-  const btnLogout  = mount.querySelector("#btn-logout");
-  const authState  = mount.querySelector("#auth-state");
+  function fallbackFooter() {
+    const y = new Date().getFullYear();
+    return `
+      <footer style="margin-top:40px;padding:20px 16px;border-top:1px solid #222;background:#0b0d12;color:#9aa0a6">
+        <div style="max-width:1080px;margin:0 auto;display:flex;justify-content:space-between;align-items:center">
+          <div>© ${y} LocaMate</div>
+          <div style="font-size:12px">Made for travelers & local hosts</div>
+        </div>
+      </footer>`;
+  }
 
-  // 콘솔 링크: 로그인 보장 후 이동
-  lnkConsole?.addEventListener("click", (e) => {
-    e.preventDefault();
-    AuthUI.ensureAuthThenNavigate("/localmate.html");
-  });
+  function highlightActiveNav(root) {
+    try {
+      const current = (location.pathname.split("/").pop() || "index.html");
+      root.querySelectorAll("a[href]").forEach(a => {
+        const href = (a.getAttribute("href") || "").split("/").pop();
+        if (href === current) a.classList.add("active");
+      });
+    } catch (_) {}
+  }
 
-  // 로그인/로그아웃
-  btnLogin?.addEventListener("click", () => AuthUI.signIn(location.pathname + location.search));
-  btnLogout?.addEventListener("click", () => AuthUI.signOut());
+  async function fetchSafe(url) {
+    try {
+      const res = await fetch(url, { cache: "no-cache" });
+      if (res.ok) return await res.text();
+    } catch(_) {}
+    return null;
+  }
 
-  // 상태 표시
-  auth.onAuthStateChanged((u) => {
-    if (u) {
-      authState.textContent = u.displayName || u.email || u.phoneNumber || (u.uid || "").slice(0, 8) + "…";
-      btnLogin.style.display = "none";
-      btnLogout.style.display = "inline-flex";
-    } else {
-      authState.textContent = "게스트";
-      btnLogin.style.display = "inline-flex";
-      btnLogout.style.display = "none";
-    }
-  });
+  async function loadHeaderFooter() {
+    const headerMount = ensureMount("app-header", "start");
+    const footerMount = ensureMount("app-footer", "end");
+
+    // 지정된 경로만 시도 (추가 경로 시도 없음 → 불필요한 404 콘솔 없음)
+    const [headerHtml, footerHtml] = await Promise.all([
+      fetchSafe(HEADER_URL),
+      fetchSafe(FOOTER_URL),
+    ]);
+
+    headerMount.innerHTML = headerHtml || fallbackHeader();
+    footerMount.innerHTML = footerHtml || fallbackFooter();
+    highlightActiveNav(headerMount);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", loadHeaderFooter, { once: true });
+  } else {
+    loadHeaderFooter();
+  }
 })();

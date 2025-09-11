@@ -1,0 +1,136 @@
+// src/app-shell.js
+(() => {
+  'use strict';
+
+  const PARTIALS_BASE = window.LM_PARTIALS_BASE || 'partials/';
+  const $header = document.getElementById('app-header');
+  const $footer = document.getElementById('app-footer');
+
+  // partial 로드 (없으면 fallback)
+  async function inject(el, url, fallbackHTML) {
+    if (!el) return;
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP '+res.status);
+      el.innerHTML = await res.text();
+    } catch {
+      el.innerHTML = fallbackHTML();
+    }
+  }
+
+  const fallbackHeader = () => `
+    <header class="header">
+      <div class="container inner">
+        <a href="index.html" class="brand">
+          <img src="./images/logo.png" class="logo-30" alt="LocaMate"/>
+          <strong>LocaMate</strong>
+        </a>
+        <nav class="desktop-only">
+          <a href="search.html" class="btn link">검색</a>
+          <a href="agents.html" class="btn link">메이트</a>
+          <a href="items.html" class="btn link">상품</a>
+          <a href="about.html" class="btn link">소개</a>
+        </nav>
+        <div id="nav-auth" class="desktop-only"></div>
+        <button id="btn-open-nav" class="btn subtle mobile-only"
+          aria-controls="nav-drawer" aria-expanded="false" aria-label="메뉴 열기">☰</button>
+      </div>
+    </header>
+    <div id="nav-drawer" class="nav-links" role="dialog" aria-modal="true"
+         aria-labelledby="nav-title" aria-hidden="true" tabindex="-1" inert>
+      <div class="drawer">
+        <div class="row between center">
+          <div id="nav-title" class="title">메뉴</div>
+          <button id="btn-close-nav" class="btn subtle" aria-label="닫기">✕</button>
+        </div>
+        <nav class="list">
+          <a class="list-item" href="search.html">검색</a>
+          <a class="list-item" href="agents.html">메이트</a>
+          <a class="list-item" href="items.html">상품</a>
+          <a class="list-item" href="about.html">소개</a>
+        </nav>
+        <hr/>
+        <div id="nav-auth-mobile" class="row gap"></div>
+      </div>
+    </div>
+  `;
+
+  const fallbackFooter = () => `
+    <footer class="container muted" style="padding:24px 0;opacity:.85">
+      © ${new Date().getFullYear()} LocaMate
+    </footer>
+  `;
+
+  function setupNavA11y(){
+    const panel   = document.getElementById('nav-drawer');
+    const openBtn = document.getElementById('btn-open-nav');
+    const closeBtn= document.getElementById('btn-close-nav');
+    if (!panel || !openBtn || !closeBtn) return;
+
+    const open = () => {
+      panel.removeAttribute('inert');
+      panel.setAttribute('aria-hidden','false');
+      openBtn.setAttribute('aria-expanded','true');
+      closeBtn.focus();
+    };
+    const close = () => {
+      panel.setAttribute('inert','');
+      panel.setAttribute('aria-hidden','true');
+      openBtn.setAttribute('aria-expanded','false');
+      openBtn.focus();
+    };
+
+    openBtn.addEventListener('click', open);
+    closeBtn.addEventListener('click', close);
+    panel.addEventListener('click', e => { if (e.target === panel) close(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+  }
+
+  // 로그인 버튼만 렌더 (폼은 별도 login.html)
+  function renderAuth(user){
+    const desktop = document.getElementById('nav-auth');
+    const mobile  = document.getElementById('nav-auth-mobile');
+    const views = [desktop, mobile].filter(Boolean);
+
+    const signedOut = (isMobile) => `<a class="btn ${isMobile?'':'subtle'}" href="login.html">로그인</a>`;
+    const signedIn  = (u,isMobile) => {
+      const name = u.displayName || (u.email ? u.email.split('@')[0] : '사용자');
+      const photo = u.photoURL || 'https://placehold.co/28x28';
+      return `
+        <div class="row center gap">
+          <img src="${photo}" alt="${name}" width="28" height="28" style="border-radius:50%"/>
+          <a class="btn subtle" href="agent.html">내 프로필</a>
+          <button id="btn-logout${isMobile?'-m':''}" class="btn subtle">로그아웃</button>
+        </div>`;
+    };
+
+    if (!views.length) return;
+
+    if (window.firebase && firebase.auth){
+      const auth = firebase.auth();
+      views.forEach(v => v.innerHTML = user ? signedIn(user, v===mobile) : signedOut(v===mobile));
+      const doSignOut = () => auth.signOut().catch(console.error);
+      const d = document.getElementById('btn-logout');
+      const m = document.getElementById('btn-logout-m');
+      if (d) d.addEventListener('click', doSignOut);
+      if (m) m.addEventListener('click', doSignOut);
+    } else {
+      views.forEach(v => v.innerHTML = signedOut(v===mobile));
+    }
+  }
+
+  function watchAuth(){
+    if (window.firebase && firebase.auth){
+      firebase.auth().onAuthStateChanged(user => renderAuth(user));
+    }else{
+      renderAuth(null);
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', async () => {
+    await inject($header, PARTIALS_BASE+'header.html', fallbackHeader);
+    await inject($footer, PARTIALS_BASE+'footer.html', fallbackFooter);
+    setupNavA11y();
+    watchAuth();
+  });
+})();

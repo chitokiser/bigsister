@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+  <title>LocaMate · 내 콘솔</title>
+    <link rel="stylesheet" href="styles.css">
+ <script>self.FIREBASE_APPCHECK_DEBUG_TOKEN = 'ae36c5c3-0aa5-42c6-b9bb-1ecef4d369a1';</script>
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check-compat.js"></script>
+
+  <!-- 프로젝트 설정 -->
+  <script src="./src/config.js"></script>
+  
+  <!-- AppCheck 포함 초기화 (CORS/권한 문제 방지) -->
+  <script src="./src/firebase-init.js"></script>
+  
+
+  <style>
+    .container{max-width:1080px;margin:0 auto;padding:16px}
+    .grid{display:grid;gap:16px}
+    .cols{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+    .row{display:flex;gap:10px;align-items:center}
+    .col{display:flex;flex-direction:column}
+    .card{padding:12px;border:1px solid #222;border-radius:12px;background:#0f1218}
+    .pill{display:inline-block;padding:2px 8px;border:1px solid #333;border-radius:999px;font-size:12px;color:#ccd}
+    .muted{color:#9aa0a6}
+    .small{font-size:12px}
+    .btn{padding:8px 12px;border-radius:10px;border:1px solid #334; background:#1a2130; color:#e6ebff; cursor:pointer}
+    .btn.outline{background:#0f1218}
+    .grid-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+    .card img.square{width:100%;aspect-ratio:1/1;height:auto;object-fit:cover;border-radius:12px}
+    .hidden{display:none}
+    input,select,textarea{background:#0b0d12;border:1px solid #223;border-radius:8px;color:#eee;padding:8px}
+    label{font-size:12px;color:#9aa0a6}
+  </style>
+</head>
+<body>
+  <div id="app-header"></div>
+
+  <main class="container">
+    <h2>내 로컬메이트 콘솔</h2>
+    <div class="row">
+      <span id="agent-status" class="muted small">로그인 확인 중…</span>
+      <span id="agent-approve-badge" class="pill">승인 상태: -</span>
+    </div>
+
+<!-- 미리보기 카드 -->
+<section class="card" style="margin-top:12px">
+  <h3 style="margin:0 0 8px 0">미리보기</h3>
+  <div class="grid-cards">
+    <div class="card" style="padding:0">
+      <!-- ⬇️ 여기: 이미지 크기만 클램프로 제한(최소 140px ~ 최대 220px), 정사각/센터 -->
+      <div class="preview-media"
+           style="width:clamp(140px, 42vw, 220px); aspect-ratio:16/16; overflow:hidden;
+                  background:#111; margin:10px auto 0; border-radius:12px">
+        <img id="pv-photo"
+             src="https://placehold.co/400x400?text=Local+Mate"
+             alt="프로필 미리보기"
+             style="width:100%; height:100%; object-fit:contain;">
+      </div>
+
+      <div style="padding:10px">
+        <div class="row" style="gap:8px">
+          <strong id="pv-name">로컬 메이트</strong>
+          <span id="pv-topic" class="pill">주제없음</span>
+        </div>
+        <div class="muted small" id="pv-email"></div>
+        <div class="muted small" id="pv-city"></div>
+        <div class="muted small" id="pv-bio" style="margin-top:4px"></div>
+        <div class="col small" style="gap:4px;margin-top:8px">
+          <div id="pv-contact-row" class="hidden">컨텍: <span class="muted" id="pv-contact"></span></div>
+        </div>
+        <div class="row gap wrap" style="margin-top:10px">
+          <a class="btn small outline" id="pv-btn-items" href="#" target="_blank">상품보기</a>
+          <a class="btn small outline" id="pv-btn-blog" href="#" target="_blank">블로그</a>
+          <a class="btn small outline" id="pv-btn-youtube" href="#" target="_blank">유튜브</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+    <!-- 프로필 편집 -->
+    <section class="card">
+      <h3 style="margin:0 0 8px 0">프로필</h3>
+      <form id="agent-form" class="grid cols">
+        <div class="col">
+          <label>이름</label>
+          <input id="agent-name" placeholder="이름" />
+        </div>
+        <div class="col">
+          <label>연락처</label>
+          <input id="agent-contact" placeholder="전화/이메일 등" />
+        </div>
+        <div class="col">
+          <label>SNS ID</label>
+          <input id="agent-messenger" placeholder="Instagram, Kakao 등" />
+        </div>
+        <div class="col">
+          <label>지갑주소</label>
+          <input id="agent-wallet" placeholder="(선택)" />
+        </div>
+        <div class="col">
+          <label>블로그 URL</label>
+          <input id="agent-blog-url" placeholder="https://yourblog.com" />
+        </div>
+        <div class="col">
+          <label>유튜브 URL</label>
+          <input id="agent-youtube-url" placeholder="https://youtube.com/yourchannel" />
+          <div class="small muted" style="margin-top:4px;">유튜브 링크는 자동으로 감지됩니다. (예: youtube.com/watch?v=..., youtu.be/...)</div>
+        </div>
+        <div class="col">
+          <label>나라</label>
+          <select id="agent-country"></select>
+        </div>
+        <div class="col">
+          <label>도시/지역</label>
+          <select id="agent-city"></select>
+        </div>
+        <div class="col">
+          <label>주제</label>
+          <select id="agent-topic"></select>
+        </div>
+        <div class="col" style="grid-column:1/-1">
+          <label>소개</label>
+          <textarea id="agent-bio" rows="3" placeholder="간단한 소개" maxlength="100"></textarea>
+        </div>
+
+        <div class="col">
+          <label>프로필 사진</label>
+          <input id="agent-photo" type="file" accept="image/*"/>
+          <div class="small muted" style="margin-top:4px">권장 사이즈: 400x400 (정사각형)</div>
+          <div class="small muted" id="agent-photo-progress"></div>
+        </div>
+        <div class="col">
+          <img id="agent-photo-preview" class="square hidden" alt="preview" />
+        </div>
+
+        <div class="row" style="grid-column:1/-1;justify-content:flex-end">
+          <button id="agent-save" class="btn">저장</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- 상품 -->
+    <section class="card">
+      <h3 id="product-form-title" style="margin:0 0 8px 0">상품 등록</h3>
+      <form id="product-form" class="grid cols">
+        <input type="hidden" id="product-id" />
+        <div class="col">
+          <label>상품명</label>
+          <input id="product-title" placeholder="상품명" />
+        </div>
+        <div class="col">
+          <label>가격</label>
+          <input id="product-price" type="number" min="0" step="1" placeholder="0" />
+        </div>
+        <div class="col" style="grid-column:1/-1">
+          <label>태그 (쉼표로 구분)</label>
+          <input id="product-tags" placeholder="ex) 투어, 맛집" />
+        </div>
+        <div class="col" style="grid-column:1/-1">
+          <label>설명</label>
+          <textarea id="product-body" rows="3"></textarea>
+        </div>
+        <div class="col">
+          <label>썸네일</label>
+          <input id="product-thumb" type="file" accept="image/*"/>
+          <div class="small muted" id="product-thumb-progress"></div>
+        </div>
+        <div class="col">
+          <label>추가 이미지 (복수 선택)</label>
+          <input id="product-images" type="file" accept="image/*" multiple/>
+          <div class="small muted" id="product-images-progress"></div>
+        </div>
+        <div class="row" style="grid-column:1/-1;justify-content:flex-end">
+          <button id="product-save" class="btn">상품 저장</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- 블로그/유튜브 -->
+    <section class="card">
+      <h3 style="margin:0 0 8px 0">블로그/유튜브 링크</h3>
+      <form id="blog-form" class="grid cols">
+        <div class="col">
+          <label>제목</label>
+          <input id="blog-title" placeholder="제목" />
+        </div>
+        <div class="col" style="grid-column:1/-1">
+          <label>URL (YouTube 자동 인식)</label>
+          <input id="blog-url" placeholder="https://"/>
+        </div>
+        <div class="col" style="grid-column:1/-1">
+          <label>태그 (쉼표로 구분)</label>
+          <input id="blog-tags" placeholder="ex) 브이로그, 맛집" />
+        </div>
+        <div class="row" style="grid-column:1/-1;justify-content:flex-end">
+          <button id="blog-save" class="btn">링크 저장</button>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <div id="app-footer"></div>
+
+  <!-- 페이지 스크립트 -->
+  <script type="module" src="./src/pages/localmate.js"></script>
+
+  <!-- 미리보기 실시간 동기화 (간단) -->
+  <script>
+    (function(){
+      const $=s=>document.querySelector(s);
+      const map = [
+        ['#agent-name','#pv-name',v=>v||'로컬 메이트'],
+        ['#agent-topic','#pv-topic',v=>v||'주제없음'],
+        ['#agent-city','#pv-city',v=>v||''],
+        ['#agent-bio','#pv-bio',v=>v||''],
+        ['#agent-contact','#pv-contact',v=>v||''],
+        ['#agent-messenger',null,()=>{}]
+      ];
+      map.forEach(([src,dst,fmt])=>{
+        const el=$(src), out=dst?$(dst):null;
+        if (!el) return;
+        const on=()=>{ const val=(el.value||'').trim(); if(out){ out.textContent=fmt(val); const row=$('#pv-contact-row'); if(dst==='#pv-contact'){ row.classList.toggle('hidden', !val); } } };
+        el.addEventListener('input',on); setTimeout(on,100);
+      });
+      // 사진 미리보기 동기화
+      const prev=$('#pv-photo'), img=$('#agent-photo-preview');
+      const syncPhoto=()=>{ prev.src = (img && img.src)||prev.src; };
+      img?.addEventListener('load', syncPhoto); setTimeout(syncPhoto,1500);
+
+      // 로그인 후 owner uid로 버튼 링크 구성 (localmate.js가 로드 완료 후 갱신되도록 딜레이)
+      setTimeout(()=>{
+        try{
+          const uid = firebase.auth().currentUser?.uid;
+          if (uid){
+            $('#pv-email').textContent = firebase.auth().currentUser?.email || '';
+            $('#pv-btn-items').href = 'search.html?owner='+encodeURIComponent(uid)+'&tab=items';
+            $('#pv-btn-blog').href  = 'search.html?owner='+encodeURIComponent(uid)+'&tab=blog';
+            $('#pv-btn-youtube').href = 'search.html?owner='+encodeURIComponent(uid)+'&tab=youtube';
+          }
+        }catch(_){}
+      }, 1800);
+    })();
+  </script>
+</body>
+</html>

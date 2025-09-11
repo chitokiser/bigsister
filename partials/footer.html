@@ -1,8 +1,5 @@
-<footer class="site-footer">
-  <div class="container row spread">
-    <small class="muted">© LocaMate · 현지의 일상을 함께하는 동행</small>
-    <div class="row gap">
-      <!-- 필요시 푸터 버튼/링크 추가 -->
-    </div>
-  </div>
+<!-- partials/footer.html -->
+<footer class="container muted" style="padding:24px 0;opacity:.85">
+  © <span id="y"></span> PawMate
+  <script>document.getElementById('y').textContent = new Date().getFullYear();</script>
 </footer>
