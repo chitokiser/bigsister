@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>친구집처럼 편안한 로컬메이트</title>
+  <meta name="description" content="지역 특화 관광상품·핫플 소개, 생활·행정 동행 지원까지. 친구집처럼 편안한 가이드 플랫폼."/>
+  <meta property="og:title" content="프렌즈 가이드 — Localmate"/>
+  <meta property="og:description" content="로컬이 직접 기획·운영하는 관광상품과 핫플. 생활/행정 동행 지원으로 방문객에게 친구같은 편안함 제공."/>
+  <meta name="color-scheme" content="light dark"/>
+
+  <style>
+    :root{
+      --bg:#0b0d14;--card:#111827;--soft:#0f172a;--text:#e8eefc;--muted:#a9b1c7;
+      --brand:#7c3aed;--brand2:#2563eb;--ok:#10b981;--warn:#f59e0b;
+      --radius:18px;--maxw:1120px;--shadow:0 8px 32px rgba(0,0,0,.25);
+      --grad:linear-gradient(135deg,var(--brand) 0%,var(--brand2) 100%);
+    }
+    @media (prefers-color-scheme: light){
+      :root{--bg:#f7f8fb;--card:#ffffff;--soft:#f1f5f9;--text:#0b1020;--muted:#4b5563;--shadow:0 10px 28px rgba(16,24,40,.12)}
+    }
+    *{box-sizing:border-box} html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,Apple SD Gothic Neo,Helvetica,Arial,sans-serif}
+    a{color:inherit;text-decoration:none}
+    .container{max-width:var(--maxw);margin:0 auto;padding:0 20px}
+    .space-xs{height:10px}.space-s{height:16px}.space-m{height:24px}.space-l{height:36px}
+
+    /* Header */
+    .header{position:sticky;top:0;z-index:40;background:rgba(11,13,20,.7);backdrop-filter:saturate(150%) blur(10px);border-bottom:1px solid rgba(255,255,255,.08)}
+    @media (prefers-color-scheme: light){.header{background:rgba(255,255,255,.85);border-bottom-color:#eef2f7}}
+    .nav{display:flex;justify-content:space-between;align-items:center;padding:14px 0}
+    .brand{display:flex;gap:10px;align-items:center;font-weight:800}
+    .logo{width:28px;height:28px;border-radius:8px;background:var(--grad);box-shadow:0 6px 18px rgba(37,99,235,.35)}
+    .menu{display:flex;gap:18px;align-items:center}
+    .btn{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:14px;border:1px solid rgba(255,255,255,.12);background:transparent;cursor:pointer;font-weight:700}
+    .btn:hover{transform:translateY(-1px)}
+    .btn-primary{background:var(--grad);color:#fff;border-color:transparent;box-shadow:var(--shadow)}
+    .hamburger{display:none;background:none;border:0;padding:8px}
+    @media (max-width:880px){.menu{display:none}.hamburger{display:block}.menu.mobile{display:flex;flex-direction:column;gap:12px;background:var(--card);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:12px;margin-top:8px}}
+
+    /* Hero */
+    .hero{padding:84px 0 54px;position:relative;overflow:hidden}
+    .hero::before{content:"";position:absolute;inset:-10% -10% auto -10%;height:420px;background:
+      radial-gradient(1200px 400px at 20% -10%,rgba(124,58,237,.35),transparent),
+      radial-gradient(900px 360px at 80% -20%,rgba(37,99,235,.28),transparent)}
+    .hero-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:32px;align-items:center}
+    @media(max-width:960px){.hero-grid{grid-template-columns:1fr}}
+    .badge{display:inline-block;padding:6px 10px;border-radius:999px;background:rgba(124,58,237,.14);border:1px solid rgba(124,58,237,.35);font-size:12px}
+    @media (prefers-color-scheme: light){.badge{background:#f4f3ff;border-color:#ddd6fe}}
+    .title{font-size:40px;line-height:1.15;margin:12px 0 10px;font-weight:900}
+    .lead{color:var(--muted);max-width:720px}
+    .mock{border-radius:22px;background:linear-gradient(180deg,var(--soft),transparent),var(--card);border:1px solid rgba(255,255,255,.08);box-shadow:var(--shadow);padding:16px}
+    .mock img{width:100%;height:auto;border-radius:14px;display:block}
+
+    /* Sections */
+    section{padding:60px 0}
+    .section-title{font-size:26px;margin:0 0 12px;font-weight:800}
+    .section-lead{color:var(--muted);max-width:760px}
+    .grid{display:grid;gap:14px}
+    .grid-3{grid-template-columns:repeat(3,1fr)}
+    .grid-2{grid-template-columns:repeat(2,1fr)}
+    @media(max-width:960px){.grid-3{grid-template-columns:1fr 1fr}}
+    @media(max-width:720px){.grid-3,.grid-2{grid-template-columns:1fr}}
+    .card{background:var(--card);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:16px;box-shadow:var(--shadow)}
+    @media (prefers-color-scheme: light){.card{border-color:#eef2f7}}
+    .pill{display:inline-flex;gap:8px;align-items:center;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);font-size:12px}
+    .list{display:grid;gap:8px;margin:10px 0 0;padding:0}
+    .list li{list-style:none;display:flex;gap:10px;align-items:flex-start}
+    .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);margin-top:8px;flex:0 0 auto}
+
+    /* Table */
+    .table{width:100%;border-collapse:separate;border-spacing:0 10px}
+    .table th,.table td{padding:12px 14px}
+    .table thead th{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+    .row{background:var(--card);border:1px solid rgba(255,255,255,.08);border-radius:12px}
+
+    /* Footer */
+    .footer{padding:40px 0;border-top:1px solid rgba(255,255,255,.08);color:var(--muted);text-align:center}
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="container">
+      <nav class="nav">
+        <a class="brand" href="./index.html">  <img src="./assets/paw120x120.png" alt="LocaMate" class="logo-30"/><span>PAW Mate 가이드</span></a>
+        <button id="hamburger" class="hamburger" aria-label="메뉴 열기">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+        <div id="menu" class="menu">
+          <a href="#concept">개념</a>
+          <a href="#offers">제공 서비스</a>
+          <a href="#process">진행 절차</a>
+          <a href="#guides">가이드 수익</a>
+          <a href="#trust">신뢰/안전</a>
+          <a href="#alliances">전략적 제휴</a>
+          <a href="#apply" class="btn btn-primary">참여 신청</a>
+        </div>
+      </nav>
+      <div id="menuMobile" class="menu mobile" style="display:none">
+        <a href="#concept">개념</a>
+        <a href="#offers">제공 서비스</a>
+        <a href="#process">진행 절차</a>
+        <a href="#guides">가이드 수익</a>
+        <a href="#trust">신뢰/안전</a>
+        <a href="#alliances">전략적 제휴</a>
+        <a href="#apply" class="btn btn-primary">참여 신청</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="container hero-grid">
+      <div>
+        <span class="badge">친구집처럼 편안한 현지 동행</span>
+        <h1 class="title">지역 특화 관광상품 &amp; 핫플레이스<br/>스스로 기획·운영하는<br/>새로운 개념의 가이드 플랫폼</h1>
+        <p class="lead">
+          로컬이 직접 만든 상품과 동선을 회원에게 소개·예약 받고,
+          방문객에게는 생활·행정 지원까지 제공해 낯선 도시에서도
+          친구에게 안내받는 듯한 편안함을 드립니다.
+        </p>
+        <div class="space-s"></div>
+        <div class="menu">
+          <a href="#apply" class="btn btn-primary">가이드로 참여</a>
+          <a href="#offers" class="btn">방문객 살펴보기</a>
+        </div>
+      </div>
+      <div class="mock" aria-hidden="true">
+        <img alt="도시 로컬 투어 감성 이미지(플레이스홀더)" src="data:image/svg+xml;utf8,<?xml version='1.0' encoding='UTF-8'?><svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 740'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0%' stop-color='%231a2235'/><stop offset='100%' stop-color='%230b0d14'/></linearGradient></defs><rect width='1200' height='740' fill='url(%23g)'/><text x='50%' y='50%' text-anchor='middle' fill='%23a9b1c7' font-size='36' font-family='Inter, Arial'>Friends-like Local Guide</text></svg>"/>
+      </div>
+    </div>
+  </section>
+
+  <!-- Concept -->
+  <section id="concept">
+    <div class="container">
+      <h2 class="section-title">플랫폼 개념</h2>
+      <p class="section-lead">로컬 크리에이터(가이드)가 관광상품·핫플·체험을 직접 기획·운영하고,
+        방문객은 예약과 함께 생활·행정 지원을 추가로 선택할 수 있는
+        “가이드+동행지원” 결합형 플랫폼입니다.</p>
+      <div class="space-s"></div>
+      <div class="grid grid-3">
+        <div class="card"><span class="pill">로컬 주도</span><h3>지역 맞춤 기획</h3><p>핫플/숨은 맛집/테마루트 등 로컬의 인사이트를 상품화</p></div>
+        <div class="card"><span class="pill">동행 지원</span><h3>생활·행정 보조</h3><p>유심/교통/의료/통번역·비자·공증·임대계약 동행</p></div>
+        <div class="card"><span class="pill">신뢰</span><h3>검증·리뷰·안전</h3><p>내부 심사·표준 가이드라인·리뷰 기반 품질관리</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Offers -->
+  <section id="offers">
+    <div class="container">
+      <h2 class="section-title">제공 서비스</h2>
+      <div class="grid grid-3">
+        <div class="card">
+          <h3>지역 특화 상품</h3>
+          <ul class="list">
+            <li><span class="dot"></span><span>핫플 투어 / 테마투어 / 미식·바 투어</span></li>
+            <li><span class="dot"></span><span>체험/클래스(요리, 서핑, 공방 등)</span></li>
+            <li><span class="dot"></span><span>동네살이(한달살기) 정착 케어</span></li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>생활 지원</h3>
+          <ul class="list">
+            <li><span class="dot"></span><span>유심/인터넷, 교통/픽업, 숙소/장기임대</span></li>
+            <li><span class="dot"></span><span>의료/약국, 통번역, 긴급지원</span></li>
+            <li><span class="dot"></span><span>현지 커뮤니티 연결</span></li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>행정 지원</h3>
+          <ul class="list">
+            <li><span class="dot"></span><span>비자/연장, 공증/번역</span></li>
+            <li><span class="dot"></span><span>임대계약/계약서 검토 동행</span></li>
+            <li><span class="dot"></span><span>세무·법무 네트워크 연계</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Process -->
+  <section id="process">
+    <div class="container">
+      <h2 class="section-title">진행 절차</h2>
+      <table class="table">
+        <thead>
+          <tr><th>단계</th><th>내용</th><th>산출물</th></tr>
+        </thead>
+        <tbody>
+          <tr class="row"><td>1. 기획 등록</td><td>가이드가 상품/루트/지원 범위를 제안</td><td>상품 카드·가격</td></tr>
+          <tr class="row"><td>2. 심사/안전</td><td>현장성·안전·가격·동선 검토</td><td>검증 배지</td></tr>
+          <tr class="row"><td>3. 공개/예약</td><td>회원 대상 노출·예약/결제</td><td>바우처/확정서</td></tr>
+          <tr class="row"><td>4. 운영/동행</td><td>투어·체험 + 생활/행정 지원</td><td>리얼타임 케어</td></tr>
+          <tr class="row"><td>5. 정산/리뷰</td><td>수수료 정산·리뷰/재구매 유도</td><td>성과 리포트</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Guides Revenue -->
+  <section id="guides">
+    <div class="container">
+      <h2 class="section-title">가이드/크리에이터 수익 구조</h2>
+      <div class="grid grid-2">
+        <div class="card">
+          <h3>수익 모델</h3>
+          <ul class="list">
+            <li><span class="dot"></span><span>예약/판매 수수료</span></li>
+            <li><span class="dot"></span><span>성과 보너스(후기·재방문·평점)</span></li>
+            <li><span class="dot"></span><span>구독/정기 프로그램(동네살이 케어)</span></li>
+            <li><span class="dot"></span><span>제휴 수익(상점/시설, 광고/프로모션)</span></li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>지원/도구</h3>
+          <ul class="list">
+            <li><span class="dot"></span><span>상품 템플릿·가격 가이드</span></li>
+            <li><span class="dot"></span><span>안전·품질(SLA) 체크리스트</span></li>
+            <li><span class="dot"></span><span>리뷰·정산 대시보드</span></li>
+            <li><span class="dot"></span><span>법무/세무/행정 네트워크</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Trust -->
+  <section id="trust">
+    <div class="container">
+      <h2 class="section-title">신뢰·안전 정책</h2>
+      <div class="grid grid-3">
+        <div class="card"><h3>표준 SLA</h3><p>응대시간·취소/환불·분쟁대응 기준을 명확히 고지</p></div>
+        <div class="card"><h3>보험/리스크</h3><p>활동보험·시설 안전점검 연계(지역별 정책 상이)</p></div>
+        <div class="card"><h3>리뷰·배지</h3><p>검증 배지·리뷰/재방문 지표로 품질 유지</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Alliances (Strategic Partnerships) -->
+  <section id="alliances">
+    <div class="container">
+      <h2 class="section-title">전략적 제휴 확대</h2>
+      <p class="section-lead">
+        플랫폼 자원(회원·콘텐츠·현지 실행망·데이터·정산체계)을 활용해
+        파일럿→스케일 단계로 파트너 매출을 함께 키웁니다. 지역 <strong>큰언니</strong> 네트워크로 실행 품질을 보장합니다.
+      </p>
+
+      <div class="grid grid-3" style="margin-top:12px">
+        <div class="card">
+          <h3>우리가 제공하는 자원</h3>
+          <ul class="list">
+            <li><span class="dot"></span><span>회원·트래픽 노출(랜딩/배너/리스트업)</span></li>
+            <li><span class="dot"></span><span>촬영·편집·리뷰 생성(C2E 미션)</span></li>
+            <li><span class="dot"></span><span>현지 실행망: 가이드·큰언니</span></li>
+            <li><span class="dot"></span><span>데이터 리포트·정산 자동화</span></li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>파트너 카테고리</h3>
+          <ul class="list">
+            <li><span class="dot"></span><span>워터파크·골프·스파·테마스트리트</span></li>
+            <li><span class="dot"></span><span>유심/교통/숙소·장기임대</span></li>
+            <li><span class="dot"></span><span>비자/공증/통번역·법무·세무</span></li>
+            <li><span class="dot"></span><span>미디어/OTA/카드사·은행</span></li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>수익 모델</h3>
+          <ul class="list">
+            <li><span class="dot"></span><span>매출공유(Rev-Share) + 성과보너스</span></li>
+            <li><span class="dot"></span><span>CPA/CPL(파일럿)</span></li>
+            <li><span class="dot"></span><span>정액+성과 혼합, 쿠폰 공동비용</span></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="space-m"></div>
+      <h3 class="section-title" style="font-size:22px">패키지(Tier) & KPI</h3>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>패키지</th><th>구성</th><th>KPI(예시)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="row">
+            <td><strong>Lite</strong> (4~6주 파일럿)</td>
+            <td>노출+리뷰10건+쿠폰 캠페인</td>
+            <td>예약 30건/월, NPS ≥60, 환불 &lt;5%</td>
+          </tr>
+          <tr class="row">
+            <td><strong>Grow</strong> (공동판매)</td>
+            <td>공동기획 코스/패스, 번들(픽업/통역)</td>
+            <td>CVR 3~5%, AOV +20%, 재방문 +15%</td>
+          </tr>
+          <tr class="row">
+            <td><strong>Prime</strong> (통합)</td>
+            <td>Shop-in-Shop, 데이터공유, 자동정산</td>
+            <td>MRR 안정화, 해지 &lt;3%, 분기 1.5배 성장</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="space-m"></div>
+      <h3 class="section-title" style="font-size:22px">SLA·안전·정산(핵심)</h3>
+      <div class="grid grid-3">
+        <div class="card"><h4>응대/처리</h4><p>문의응대 &lt;10분, 예약확정 &lt;2시간, 취소/환불 SLA 준수</p></div>
+        <div class="card"><h4>안전/보험</h4><p>활동·영업배상, 시설 안전점검, 비상연락망 운영</p></div>
+        <div class="card"><h4>정산/보고</h4><p>월 정산·세금처리, 대시보드·성과리포트 제공</p></div>
+      </div>
+
+      <div class="space-m"></div>
+      <div class="card">
+        <h3 style="margin:6px 0 8px">제휴 문의</h3>
+        <p class="section-lead" style="margin:0 0 12px">간단히 남겨주시면 24시간 이내 회신드립니다.</p>
+        <form onsubmit="event.preventDefault();alert('제휴 문의가 접수되었습니다.');">
+          <div class="grid grid-2">
+            <label>회사/브랜드<br/><input required placeholder="예: Ocean Park WaterWorld" style="width:100%;padding:10px;border-radius:12px;border:1px solid #cbd5e1;background:transparent;color:inherit"/></label>
+            <label>담당자 이메일<br/><input type="email" required placeholder="you@company.com" style="width:100%;padding:10px;border-radius:12px;border:1px solid #cbd5e1;background:transparent;color:inherit"/></label>
+          </div>
+          <div class="space-s"></div>
+          <label>제안 개요<br/><textarea rows="4" placeholder="예: 주중 패밀리 패스 공동판매 파일럿 제안" style="width:100%;padding:10px;border-radius:12px;border:1px solid #cbd5e1;background:transparent;color:inherit"></textarea></label>
+          <div class="space-s"></div>
+          <button class="btn btn-primary" type="submit">제휴 문의 보내기</button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- Apply -->
+  <section id="apply">
+    <div class="container">
+      <h2 class="section-title">참여 신청</h2>
+      <p class="section-lead">가이드(크리에이터) 신청 또는 방문객 상담을 선택하세요.</p>
+      <div class="grid grid-2">
+        <div class="card">
+          <h3>가이드 신청</h3>
+          <form onsubmit="event.preventDefault();alert('가이드 신청이 접수되었습니다.');">
+            <label>이름<br/><input required placeholder="홍길동" style="width:100%;padding:10px;border-radius:12px;border:1px solid #cbd5e1;background:transparent;color:inherit"/></label>
+            <div class="space-s"></div>
+            <label>이메일<br/><input type="email" required placeholder="you@example.com" style="width:100%;padding:10px;border-radius:12px;border:1px solid #cbd5e1;background:transparent;color:inherit"/></label>
+            <div class="space-s"></div>
+            <label>지역/상품 아이디어<br/><textarea rows="4" placeholder="예: 하노이 바투어 + 생활지원 패키지" style="width:100%;padding:10px;border-radius:12px;border:1px solid #cbd5e1;background:transparent;color:inherit"></textarea></label>
+            <div class="space-s"></div>
+            <button class="btn btn-primary" type="submit">가이드로 참여</button>
+          </form>
+        </div>
+        <div class="card">
+          <h3>방문객 상담</h3>
+          <form onsubmit="event.preventDefault();alert('상담 요청이 접수되었습니다.');">
+            <label>이름<br/><input required placeholder="김하늘" style="width:100%;padding:10px;border-radius:12px;border:1px solid #cbd5e1;background:transparent;color:inherit"/></label>
+            <div class="space-s"></div>
+            <label>이메일<br/><input type="email" required placeholder="you@example.com" style="width:100%;padding:10px;border-radius:12px;border:1px solid #cbd5e1;background:transparent;color:inherit"/></label>
+            <div class="space-s"></div>
+            <label>희망 내용<br/><textarea rows="4" placeholder="예: 11월 2주차 한달살이, 비자/임대 동행 포함" style="width:100%;padding:10px;border-radius:12px;border:1px solid #cbd5e1;background:transparent;color:inherit"></textarea></label>
+            <div class="space-s"></div>
+            <button class="btn" type="submit">상담 신청</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <small>© 2025 Friends Guide / Localmate — All rights reserved.</small>
+    </div>
+  </footer>
+
+  <script>
+    // 모바일 메뉴 토글
+    const $h = document.getElementById('hamburger');
+    const $m = document.getElementById('menuMobile');
+    $h?.addEventListener('click', ()=>{ $m.style.display = ($m.style.display==='none'||!$m.style.display)?'flex':'none'; });
+
+    // 부드러운 스크롤
+    document.querySelectorAll('a[href^="#"]').forEach(a=>{
+      a.addEventListener('click', e=>{
+        const id = a.getAttribute('href'); if(!id || id==="#") return;
+        const el = document.querySelector(id);
+        if(el){ e.preventDefault(); window.scrollTo({top:el.getBoundingClientRect().top+window.scrollY-70,behavior:'smooth'}); $m.style.display='none'; }
+      });
+    });
+  </script>
+</body>
+</html>

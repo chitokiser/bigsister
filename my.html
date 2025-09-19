@@ -2,39 +2,189 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
-  <meta name="theme-color" content="#0C0F14"/>
-  <title>LocaMate · 마이</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>PawMate · 마이페이지</title>
   <link rel="stylesheet" href="./styles.css"/>
- <!-- Firebase (compat) -->
-<script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-<script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-<script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
-<script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check-compat.js"></script> <!-- ⬅️ 추가 -->
 
-  <script src="./src/config.js"></script>
-  <script>
-    window.FB_APP_CHECK_SITE_KEY = "6LduZMErAAAAAJHFSyn2sQMusMCrjFOpQ0YrrbHz";
-    window.FB_APP_CHECK_DEBUG = true;
-  </script>
-  <script src="./src/firebase-init.js"></script>
+  <!-- Firebase (compat) -->
+  <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check-compat.js"></script>
+
+  <!-- Ethers (지갑/온체인 조회) -->
+  <script defer src="https://cdn.jsdelivr.net/npm/ethers@6.12.1/dist/ethers.umd.min.js"></script>
+
+  <!-- 설정/초기화 -->
+  <script defer src="./src/config.js"></script>
+  <script defer src="./src/firebase-init.js"></script>
+
+  <!-- 마이페이지 컨트롤러 -->
+  <script defer src="./src/pages/my.js"></script>
+
+  <style>
+    :root{--bg:#0b0f14;--card:#0f1218;--line:#1f2633;--line2:#243041;--fg:#e6ebff;--muted:#9aa0a6}
+    body{background:var(--bg);color:var(--fg);font-family:Inter,system-ui,Segoe UI,Apple SD Gothic Neo,Malgun Gothic,Arial;margin:0}
+    .container{max-width:1080px;margin:0 auto;padding:16px}
+    .card{padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--card)}
+    .muted{color:var(--muted)}
+    h1,h2,h3{margin:0}
+    h2{margin:0 0 8px}
+    h3{margin:0 0 6px}
+    table{width:100%;border-collapse:collapse}
+    th,td{border-bottom:1px solid var(--line2);padding:8px;text-align:left;font-size:14px;vertical-align:top}
+    .pill{display:inline-block;border:1px solid #334;border-radius:999px;padding:2px 8px;font-size:12px;color:#cfe}
+    .addr{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;}
+    .empty{color:var(--muted);padding:8px 0}
+    .count{font-size:12px;color:var(--muted);font-weight:500;margin-left:6px}
+    .row{display:flex;gap:10px;align-items:center}
+    .grid{display:grid;gap:10px;grid-template-columns:repeat(2,minmax(0,1fr))}
+    .btn{padding:8px 12px;border:1px solid #334;background:#1a2130;color:#e6ebff;border-radius:10px;text-decoration:none;cursor:pointer}
+    .btn.small{padding:6px 10px;font-size:13px}
+    .btn.primary{background:#1d2a46;border-color:#354a7a}
+    .danger{border-color:#7a3535;background:#462121}
+    @media (max-width:760px){ .grid{grid-template-columns:1fr} }
+  </style>
 </head>
 <body>
-  <div id="app-header"></div>
 
-  <main class="container">
-    <h2 class="section-title">마이</h2>
-    <h3>내 예약</h3>
-    <div id="my-orders" class="list"></div>
-    <h3>내 바우처(QR)</h3>
-    <div id="my-vouchers" class="grid cards-2"></div>
-    <h3>내 리뷰</h3>
-    <div id="my-reviews" class="list"></div>
+  <!-- ── 헤더 영역 ───────────────────────────── -->
+  <header class="site-header" style="position:sticky;top:0;z-index:10;background:rgba(11,15,20,.9);backdrop-filter: blur(6px);border-bottom:1px solid var(--line)">
+    <div class="container row" style="justify-content:space-between">
+      <div class="row">
+        <a class="brand row" href="index.html" title="홈" style="text-decoration:none;color:#fff;font-weight:700">
+          <img src="https://puppi.netlify.app/images/logo.png" alt="PawMate" style="width:28px;height:28px;border-radius:6px;display:block"/>
+          <span>PawMate</span>
+        </a>
+        <nav class="row" style="margin-left:12px">
+          <a href="index.html" style="color:#cfe;text-decoration:none">홈</a>
+          <a href="products.html" style="color:#cfe;text-decoration:none">상품</a>
+          <a href="agent.html" style="color:#cfe;text-decoration:none">상품등록</a>
+          <a href="notices.html" style="color:#cfe;text-decoration:none">공지</a>
+          <a class="active" href="my.html" style="color:#fff;text-decoration:none;border-bottom:2px solid #89a">마이페이지</a>
+        </nav>
+      </div>
+      <div class="row">
+        <span id="hdr-user" class="muted">로그인 전</span>
+        <a id="hdr-login" class="btn small" href="login.html">로그인</a>
+        <button id="hdr-logout" class="btn small" style="display:none">로그아웃</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container" id="my-page" style="padding-top:14px">
+    <h2>마이페이지</h2>
+    <div class="muted" id="my-auth">로그인 확인중…</div>
+
+    <!-- 정산/잔고/정보 -->
+    <section class="card" style="margin-top:12px">
+      <h3>요약 정보</h3>
+      <div class="grid" style="margin-top:8px">
+        <div class="card">
+          <div class="row" style="justify-content:space-between">
+            <div>
+              <div class="muted">내 지갑 주소</div>
+              <div class="addr" id="my-addr">확인중…</div>
+            </div>
+            <div>
+              <div class="muted">최신 bid(다음 발급 id)</div>
+              <div id="bid-latest">-</div>
+            </div>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <div style="flex:1">
+              <div class="muted">나의 수당(mypay)</div>
+              <div id="my-pay">-</div>
+            </div>
+            <div>
+              <button id="btn-withdraw" class="btn small primary">나의 수당 인출</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="row" style="justify-content:space-between">
+            <div>
+              <div class="muted">컨트랙트 PAW 잔고(g1)</div>
+              <div id="c-paw">-</div>
+            </div>
+            <div>
+              <div class="muted">나의 PAW 잔고(g2)</div>
+              <div id="me-paw">-</div>
+            </div>
+          </div>
+          <div class="row" style="margin-top:8px;justify-content:space-between">
+            <div>
+              <div class="muted">나의 매출(mysales)</div>
+              <div id="my-sales">-</div>
+            </div>
+            <div></div>
+          </div>
+        </div>
+      </div>
+      <div class="muted" style="margin-top:6px" id="summary-status"></div>
+    </section>
+
+    <!-- 사용 전 바우처 -->
+    <section class="card" style="margin-top:12px">
+      <h3>사용 전 바우처 <span id="unused-count" class="count"></span></h3>
+      <div style="overflow:auto;margin-top:8px">
+        <table id="unused-table">
+          <thead>
+          <tr>
+            <th>Voucher ID</th>
+            <th>가격</th>
+            <th>판매자</th>
+            <th>상태</th>
+            <th>구매시각</th>
+          </tr>
+          </thead>
+          <tbody id="unused-tbody"></tbody>
+        </table>
+      </div>
+      <div class="muted empty" id="unused-empty" style="display:none">사용 가능한 바우처가 없습니다.</div>
+    </section>
+
+    <!-- 내가 구매한 바우처 -->
+    <section class="card" style="margin-top:12px">
+      <h3>내가 구매한 바우처 <span id="purchased-count" class="count"></span></h3>
+      <div style="overflow:auto;margin-top:8px">
+        <table id="purchased-table">
+          <thead>
+          <tr>
+            <th>Voucher ID</th>
+            <th>가격</th>
+            <th>판매자</th>
+            <th>상태</th>
+            <th>구매시각</th>
+          </tr>
+          </thead>
+          <tbody id="purchased-tbody"></tbody>
+        </table>
+      </div>
+      <div class="muted empty" id="purchased-empty" style="display:none">표시할 바우처가 없습니다.</div>
+    </section>
+
+    <!-- 내가 판매(발행)한 바우처 + 바우처별 구매자 -->
+    <section class="card" style="margin-top:12px">
+      <h3>내 바우처(발행) <span id="issued-count" class="count"></span></h3>
+      <div style="overflow:auto;margin-top:8px">
+        <table id="voucher-table">
+          <thead>
+          <tr>
+            <th>Voucher ID</th>
+            <th>가격</th>
+            <th>구매자 리스트</th>
+            <th>생성시각</th>
+          </tr>
+          </thead>
+          <tbody id="voucher-tbody"></tbody>
+        </table>
+      </div>
+      <div class="muted empty" id="voucher-empty" style="display:none">표시할 바우처가 없습니다.</div>
+    </section>
+
   </main>
-
-  <div id="app-footer"></div>
-
-  <script type="module" src="./src/pages/my.js"></script>
 </body>
 </html>

@@ -1,4 +1,6 @@
-import { ensureLayout, toast } from '../core.js';
+// src/pages/localmate.js — admin이 해시(#agentId)로 연 에이전트 프로필도 로딩/표시
+
+import { $, ensureLayout, toast } from '../core.js';
 
 "use strict";
 
@@ -12,20 +14,11 @@ const auth = () => firebase.auth();
 const db   = () => firebase.firestore();
 
 // 업로드 폴더 상수(스토리지 규칙과 정확히 일치!)
-const PROFILE_FOLDER = "profile"; // users/<uid>/profile/...
-const ITEM_FOLDER    = "products";   // users/<uid>/items/...
+const PROFILE_FOLDER = "profile";   // users/<uid>/profile/...
+const ITEM_FOLDER    = "products";  // users/<uid>/products/...
 
-// DOM utils
-const $    = (s, el=document) => el.querySelector(s);
-const setv = (s, v="") => { const n=$(s); if(n) n.value = v ?? ""; };
-const getv = (s) => { const n=$(s); return n ? (n.value ?? "").trim() : ""; };
-
-
-// ⬇️ localmate.js 최상단 유틸 근처에 배치
+// App Check 확보 도우미
 const ensureAppCheck = () => (window.ensureAppCheck ? window.ensureAppCheck() : Promise.resolve(null));
-
-
-
 
 function getBucketRef() {
   if (typeof window.getBucketRef === "function") return window.getBucketRef();
@@ -33,11 +26,30 @@ function getBucketRef() {
   return bucket ? firebase.storage().refFromURL(`gs://${bucket}`) : firebase.storage().ref();
 }
 
-// Dropdown data
+// ===== 해시 파싱 / 관리자 판별 =====
+function getHashAgentId(){
+  const h = (location.hash || "").replace(/^#/, '').trim();
+  return h ? decodeURIComponent(h) : null;
+}
+
+async function isAdminUser(user){
+  if (!user) return false;
+  try {
+    const t = await user.getIdTokenResult(true);
+    if (t?.claims?.admin === true) return true;
+  } catch(_) {}
+  try {
+    const s = await db().collection('users').doc(user.uid).get();
+    if (s.exists && (s.data()?.role === 'admin')) return true;
+  } catch(_) {}
+  return false;
+}
+
+// ===== Dropdown data =====
 const COUNTRIES = {
-  Vietnam:["Hanoi","Da Nang","Ho Chi Minh City","Quang Binh • Dong Hoi"],
-  Korea:["Seoul","Busan","Jeju"],
-  Thailand:["Bangkok","Chiang Mai","Phuket"],
+  Vietnam:  ["Hanoi","Da Nang","Ho Chi Minh City","Quang Binh • Dong Hoi"],
+  Korea:    ["Seoul","Busan","Jeju"],
+  Thailand: ["Bangkok","Chiang Mai","Phuket"],
 };
 const TOPICS = ["레저","문화","교육","음악","미술","사업","로맨틱","음식","자연","액티비티"];
 
@@ -46,7 +58,7 @@ function populateCountryCity(selCountry, selCity){
   const $city = $('#agent-city');
   if (!$country || !$city) return;
 
-  // 1차: 즉시 채우기
+  // 1차 옵션 채우기
   $country.innerHTML = `<option value="">나라선택</option>` +
     Object.keys(COUNTRIES).map(c=>`<option ${c===selCountry?'selected':''} value="${c}">${c}</option>`).join('');
 
@@ -58,51 +70,17 @@ function populateCountryCity(selCountry, selCity){
   $country.onchange = ()=>{
     const list = COUNTRIES[$country.value] || [];
     $city.innerHTML = `<option value="">도시/지역 선택</option>` + list.map(ct=>`<option value="${ct}">${ct}</option>`).join('');
-    $('#pv-city').textContent = `${$country.value||''} ${$city.value||''}`.trim();
+    const pv = $('#pv-city'); if (pv) pv.textContent = `${$country.value||''} ${$city.value||''}`.trim();
   };
   $city.onchange = ()=>{
-    $('#pv-city').textContent = `${$country.value||''} ${$city.value||''}`.trim();
+    const pv = $('#pv-city'); if (pv) pv.textContent = `${$country.value||''} ${$city.value||''}`.trim();
   };
 }
+
 function populateTopics(selTopic){
   const $topic = $('#agent-topic'); if(!$topic) return;
   $topic.innerHTML = `<option value="">주제선택</option>` +
     TOPICS.map(t=>`<option ${t===selTopic?'selected':''} value="${t}">${t}</option>`).join('');
-}
-
-// ===== Auth overlay (로그인 보장) =====
-function ensureAuthUI(){
-  return new Promise(async (resolve, reject)=>{
-    try{ await auth().getRedirectResult(); }catch(_){}
-    if (auth().currentUser) return resolve(auth().currentUser);
-    const u = await new Promise(r=>{ const un=auth().onAuthStateChanged(x=>{un(); r(x||null);});});
-    if (u) return resolve(u);
-
-    const wrap = document.createElement('div');
-    Object.assign(wrap.style,{position:'fixed',inset:'0',background:'rgba(0,0,0,.6)',display:'grid',placeItems:'center',zIndex:99999});
-    wrap.innerHTML = `
-      <div style="background:#111;color:#eee;padding:24px;border-radius:16px;width:min(460px,92%);box-shadow:0 8px 30px rgba(0,0,0,.5)">
-        <div style="font-size:18px;font-weight:700;margin-bottom:8px">로그인이 필요합니다</div>
-        <div class="muted" style="margin-bottom:16px">Google 또는 이메일/비밀번호로 로그인 후 계속됩니다.</div>
-        <div class="row" style="display:flex;gap:8px;justify-content:flex-end">
-          <a id="btn-email" class="btn outline" style="background:#222;border:1px solid #333;color:#ddd;text-decoration:none">이메일 로그인</a>
-          <button id="btn-goog" class="btn" style="background:#4f46e5;border:0;color:#fff;border-radius:8px">Google로 로그인</button>
-        </div>
-      </div>`;
-    document.body.appendChild(wrap);
-    const provider = new firebase.auth.GoogleAuthProvider();
-    $('#btn-email').onclick = ()=>{
-      sessionStorage.setItem('next_after_login', location.pathname + location.search);
-      location.href = `login.html?next=${encodeURIComponent(location.pathname + location.search)}`;
-    };
-    $('#btn-goog').onclick = async ()=>{
-      sessionStorage.setItem('next_after_login', location.pathname + location.search);
-      try{ await auth().signInWithPopup(provider); }
-      catch(_){ await auth().signInWithRedirect(provider); return; }
-      const u2 = auth().currentUser || await new Promise(r=>{ const un=auth().onAuthStateChanged(x=>{un(); r(x||null);}); });
-      if (u2){ document.body.removeChild(wrap); resolve(u2); } else reject(new Error('AUTH_FAILED'));
-    };
-  });
 }
 
 // ===== 공통 유틸 =====
@@ -113,7 +91,20 @@ function withTimeout(p, ms=TIMEOUT_MS, label="작업"){
 }
 const setBusy = (sel, on, txtOn="저장 중...") => { const b=$(sel); if(!b) return; b.disabled=!!on; b.textContent = on?txtOn:"저장"; };
 
-// ===== 이미지 400x400 정사각 변환 (중앙 크롭) =====
+// 로그인 대기(최대 15초). 로그인 UI는 프로젝트 공통 흐름에 맡김.
+async function ensureAuthUI(timeoutMs = 15000) {
+  const u0 = auth().currentUser;
+  if (u0) return u0;
+  return new Promise((res, rej) => {
+    const started = Date.now();
+    const off = auth().onAuthStateChanged((u) => {
+      if (u) { off(); res(u); }
+      else if (Date.now() - started > timeoutMs) { off(); rej(new Error('로그인이 필요합니다.')); }
+    });
+  });
+}
+
+// ===== 이미지 400x400 정사각 변환 =====
 async function toSquare400(file){
   try{
     if (!file || !file.type || !file.type.startsWith('image/')) return file;
@@ -140,15 +131,12 @@ async function toSquare400(file){
     if (!blob) return file;
     return new File([blob], `sq400_${(file.name||'image').replace(/\.[^.]+$/,'')}.jpg`, { type: 'image/jpeg', lastModified: Date.now() });
   }catch{
-    return file; // 실패 시 원본 업로드
+    return file;
   }
 }
 
-// ===== 업로드 (규칙과 정확히 일치: users/<uid>/<folder>/...) =====
+// ===== 업로드 =====
 async function uploadToStorage(uid, folder, file, progressEl, opt = {}) {
-  // App Check 토큰은 호출하는 쪽(onSaveProfile 등)에서 이미 확보했으므로 중복 호출을 제거합니다.
-  // await ensureAppCheck();
-
   if (!file) throw new Error("파일 없음");
   if (file.size > 50 * 1024 * 1024) throw new Error("파일이 50MB를 초과합니다");
 
@@ -159,7 +147,7 @@ async function uploadToStorage(uid, folder, file, progressEl, opt = {}) {
   }
 
   const clean = (file.name || "file").replace(/\s+/g, '_');
-  const path  = `users/${uid}/${folder}/${Date.now()}_${clean}`; // 규칙과 동일
+  const path  = `users/${uid}/${folder}/${Date.now()}_${clean}`;
 
   const rootRef = getBucketRef();
   const ref = rootRef.child(path);
@@ -197,9 +185,9 @@ async function uploadToStorage(uid, folder, file, progressEl, opt = {}) {
     if (String(code).includes('appCheck') || String(code).includes('app-check')) {
       hint = 'App Check 토큰: firebase-init.js 활성화 + Allowed domains + 디버그 토큰 등록 확인';
     } else if (String(code).includes('CORS') || String(code).includes('net::ERR_FAILED')) {
-      hint = 'CORS처럼 보이는 403: App Check 미통과일 확률 높음 (콘솔 로그/설정 확인)';
+      hint = 'CORS처럼 보이는 403: App Check 미통과일 확률 높음';
     } else if (String(code).includes('storage/unauthorized') || String(code).includes('storage/forbidden')) {
-      hint = 'Storage 규칙/경로 검증: users/<uid>/** 와 request.auth.uid 일치해야 함';
+      hint = 'Storage 규칙/경로 검증: users/<uid>/** 와 request.auth.uid 일치 여부 확인';
     }
     if (progressEl) progressEl.textContent = '실패';
     console.error('uploadToStorage error:', e);
@@ -235,126 +223,21 @@ function parseYouTube(urlStr){
   }
 }
 
-// ===== 페이지 로드 =====
-async function loadPage(){
-  await ensureLayout('agent.html');
+// ===== 저장 (프로필/상품/블로그) =====
+let savingProfile=false, savingProduct=false, savingBlog=false;
 
-  // 드롭다운은 즉시 1차 채우기 (로그인/네트워크 실패해도 선택 가능)
-  populateCountryCity("", "");
-  populateTopics("");
-
-  auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{});
-
-  // App Check 토큰 확보(읽기 전)
-  await ensureAppCheck();
-
-  const user = await ensureAuthUI();
-  const uid  = user.uid;
-
-  const status = $('#agent-status');
-  if (status) status.textContent = `상태: 로그인 (${user.email || user.uid.slice(0,8)}…)`;
-
-  // 미리보기 기본 값
-  $('#pv-email').textContent = user.email || '';
-
-  // 내 agent 문서 로드 (App Check 토큰 확보 후)
-  let d = {};
+// users/{uid}.walletAddress 동기화
+async function syncWalletToUsers(uid, wallet) {
   try {
-    const snap = await db().collection('agents').doc(uid).get();
-    d = snap.exists ? (snap.data() || {}) : {};
+    if (!wallet) return;
+    await db().collection('users').doc(uid).set(
+      { walletAddress: wallet, updatedAt: firebase.firestore.FieldValue.serverTimestamp() },
+      { merge: true }
+    );
   } catch (e) {
-    console.warn("[home] 에이전트 로드 실패:", e);
-    toast("저장된 프로필을 불러오지 못했습니다. (App Check/권한 설정 확인)");
-  }
-
-  // 저장값 반영(2차 주입)
-  populateCountryCity(d.country || "", d.city || "");
-  populateTopics(d.topic || "");
-  setv('#agent-name', d.displayName || d.name || '');
-  setv('#agent-bio', d.bio || '');
-  setv('#agent-contact', d.contact || '');
-  setv('#agent-messenger', d.messenger || '');
-  setv('#agent-wallet', d.wallet || '');
-  setv('#agent-country', d.country || '');
-  setv('#agent-city', d.city || '');
-  setv('#agent-topic', d.topic || '');
-  setv('#agent-blog-url', d.blogUrl || '');
-  setv('#agent-youtube-url', d.youtubeUrl || '');
-
-  // 미리보기 반영
-  $('#pv-name').textContent    = d.name || d.displayName || user.displayName || '로컬 메이트';
-  $('#pv-topic').textContent   = d.topic || '주제없음';
-  $('#pv-city').textContent    = `${d.country||''} ${d.city||''}`.trim();
-  $('#pv-bio').textContent     = d.bio || '';
-  $('#pv-contact').textContent = d.contact || '';
-  $('#pv-contact-row').classList.toggle('hidden', !d.contact);
-
-  const badge = $('#agent-approve-badge');
-  if (badge) badge.textContent = `승인 상태: ${d.status || 'pending'}`;
-
-  if (d.photoURL){
-    const img = $('#agent-photo-preview');
-    if (img){ img.src=d.photoURL; img.classList.remove('hidden'); img.style.display='block'; }
-    $('#pv-photo').src = d.photoURL;
-  }
-
-  // 사진 선택 시 미리보기
-  const fileEl = $('#agent-photo');
-  fileEl?.addEventListener('change', ()=>{
-    const f = fileEl.files?.[0]; if (!f) return;
-    const url = URL.createObjectURL(f);
-    const img = $('#agent-photo-preview');
-    if (img){ img.src = url; img.classList.remove('hidden'); img.style.display='block'; }
-    $('#pv-photo').src = url;
-  });
-
-  // 블로그 URL 입력 시 YouTube 자동 감지 안내
-  const blogUrlEl = $('#blog-url');
-  blogUrlEl?.addEventListener('input', ()=>{
-    const info = parseYouTube(getv('#blog-url'));
-    if (info) toast('유튜브 링크로 인식했어요. 썸네일/임베드가 함께 저장됩니다.');
-  });
-
-  // 미리보기 버튼 링크 (내 소유 항목 필터링)
-  $('#pv-btn-items').href   = `search.html?owner=${encodeURIComponent(uid)}&tab=items`;
-  $('#pv-btn-blog').href    = `search.html?owner=${encodeURIComponent(uid)}&tab=blog`;
-  $('#pv-btn-youtube').href = `search.html?owner=${encodeURIComponent(uid)}&tab=youtube`;
-
-  // 상품 수정 모드
-  const urlParams = new URLSearchParams(window.location.search);
-  const editProductId = urlParams.get('productId');
-  if (editProductId) {
-    $('#product-form-title').textContent = '상품 수정';
-    setv('#product-id', editProductId);
-    try {
-      const productSnap = await db().collection('products').doc(editProductId).get();
-      if (productSnap.exists) {
-        const p = productSnap.data();
-        if (p.ownerUid !== uid) {
-          toast('이 상품을 수정할 권한이 없습니다.');
-          $('#product-form').style.display = 'none'; // Hide form if not owner
-          return;
-        }
-        setv('#product-title', p.title || '');
-        setv('#product-price', p.price || 0);
-        setv('#product-tags', (p.tags || []).join(', '));
-        setv('#product-body', p.body || '');
-        // For thumb and images, we don't pre-fill file inputs for security
-        // but we could show current image previews if needed.
-      } else {
-        toast('수정할 상품을 찾을 수 없습니다.');
-        $('#product-form').style.display = 'none';
-      }
-    } catch (e) {
-      console.error('상품 로드 실패:', e);
-      toast('상품 로드 실패: ' + e.message);
-      $('#product-form').style.display = 'none';
-    }
+    console.warn('[localmate] syncWalletToUsers fail:', e);
   }
 }
-
-// ===== 저장 (프로필) =====
-let savingProfile=false, savingProduct=false, savingBlog=false;
 
 async function onSaveProfile(e){
   e?.preventDefault?.();
@@ -362,16 +245,16 @@ async function onSaveProfile(e){
   const u = auth().currentUser || await ensureAuthUI();
   const uid = u.uid;
 
-  const displayName = getv('#agent-name');
-  const bio = getv('#agent-bio');
-  const contact = getv('#agent-contact');
-  const messenger = getv('#agent-messenger');
-  const wallet = getv('#agent-wallet');
-  const country = getv('#agent-country');
-  const city = getv('#agent-city');
-  const topic = getv('#agent-topic');
-  const blogUrl = getv('#agent-blog-url');
-  const youtubeUrl = getv('#agent-youtube-url');
+  const displayName = $('#agent-name')?.value?.trim() || '';
+  const bio         = $('#agent-bio')?.value?.trim() || '';
+  const contact     = $('#agent-contact')?.value?.trim() || '';
+  const messenger   = $('#agent-messenger')?.value?.trim() || '';
+  const wallet      = $('#agent-wallet')?.value?.trim() || '';
+  const country     = $('#agent-country')?.value || '';
+  const city        = $('#agent-city')?.value || '';
+  const topic       = $('#agent-topic')?.value || '';
+  const blogUrl     = $('#agent-blog-url')?.value?.trim() || '';
+  const youtubeUrl  = $('#agent-youtube-url')?.value?.trim() || '';
 
   if(!displayName) return toast('이름은 필수입니다.');
   if(!country)     return toast('나라를 선택해주세요.');
@@ -381,19 +264,20 @@ async function onSaveProfile(e){
   setBusy('#agent-save', true); savingProfile = true;
 
   try{
-    // 업로드 전 App Check 토큰 확보
     await ensureAppCheck();
+
+    const ref = db().collection('agents').doc(uid);
+    const doc = await ref.get();
 
     let photoURL = null;
     const f = $('#agent-photo')?.files?.[0] || null;
-    if (f) photoURL = await uploadToStorage(uid, PROFILE_FOLDER, f, $('#agent-photo-progress'), { square400:true });
-
-    const ref = db().collection('agents').doc(uid);
-    let existingStatus = null, exists=false;
-    try{
-      const snapCur = await ref.get();
-      exists = snapCur.exists; existingStatus = exists ? (snapCur.data()?.status || null) : null;
-    }catch(_){}
+    if (f) {
+      try {
+        photoURL = await uploadToStorage(uid, PROFILE_FOLDER, f, $('#agent-photo-progress'), { square400: true });
+      } catch (e) {
+        console.warn('사진 업로드 실패, 텍스트만 저장 진행:', e);
+      }
+    }
 
     const payload = {
       ownerUid: uid,
@@ -404,10 +288,27 @@ async function onSaveProfile(e){
       email: u.email || '',
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
-    if (!exists || !existingStatus){ payload.status = 'pending'; }
+    if (!doc.exists) { payload.status = 'pending'; }
     if (photoURL) payload.photoURL = photoURL;
 
     await withTimeout(ref.set(payload,{merge:true}), TIMEOUT_MS, '프로필 저장');
+
+    // 🔁 admin 화면 호환을 위해 users/{uid}.walletAddress 도 동기화
+    if (wallet) { await syncWalletToUsers(uid, wallet); }
+
+    // 안전 로컬 저장 (선택)
+    try {
+      if (typeof window.saveProfileToLocalStorage === 'function') {
+        window.saveProfileToLocalStorage(payload);
+      } else {
+        localStorage.setItem('lm_agent_profile', JSON.stringify({
+          displayName, bio, contact, messenger, wallet, country, city, topic,
+          blogUrl, youtubeUrl,
+          photoURL: photoURL || (doc.exists ? doc.data().photoURL : null),
+          updatedAt: Date.now()
+        }));
+      }
+    } catch (_) {}
 
     // 미리보기/배지 갱신
     $('#pv-name').textContent    = displayName || '로컬 메이트';
@@ -415,16 +316,15 @@ async function onSaveProfile(e){
     $('#pv-city').textContent    = `${country||''} ${city||''}`.trim();
     $('#pv-bio').textContent     = bio || '';
     $('#pv-contact').textContent = contact || '';
-    $('#pv-contact-row').classList.toggle('hidden', !contact);
+    $('#pv-contact-row')?.classList?.toggle('hidden', !contact);
     if (photoURL){
       const img = $('#agent-photo-preview');
       if (img){ img.src = photoURL; img.classList.remove('hidden'); img.style.display='block'; }
-      $('#pv-photo').src = photoURL;
+      const pv = $('#pv-photo'); if (pv) pv.src = photoURL;
     }
-    $('#agent-approve-badge').textContent = `승인 상태: ${payload.status || 'pending'}`;
+    $('#agent-approve-badge').textContent = `승인 상태: ${payload.status || doc.data()?.status || 'pending'}`;
 
     toast('프로필 저장 완료');
-    toast(`저장된 블로그 URL: ${blogUrl || '없음'}, 유튜브 URL: ${youtubeUrl || '없음'}`);
   } catch(err){
     console.error('onSaveProfile:', err);
     toast(`프로필 저장 실패: ${err?.code || ''} ${err?.message || err}`);
@@ -433,20 +333,21 @@ async function onSaveProfile(e){
   }
 }
 
-// ===== 저장 (상품) =====
 async function onSaveProduct(e){
   e?.preventDefault?.();
   if (savingProduct) return;
   const u = auth().currentUser || await ensureAuthUI();
   const uid = u.uid;
 
-  const title = getv('#product-title');
-  const price = Number(getv('#product-price') || 0);
-  const tags  = getv('#product-tags').split(',').map(s=>s.trim()).filter(Boolean);
-  const body  = getv('#product-body');
+  const title = $('#product-title')?.value?.trim() || '';
+  // 폼에 price 입력이 없는 경우를 대비해 0으로
+  const priceInput = document.querySelector('#product-price');
+  const price = priceInput ? Number(priceInput.value || 0) : 0;
+  const tags  = ($('#product-tags')?.value || '').split(',').map(s=>s.trim()).filter(Boolean);
+  const body  = $('#product-body')?.value || '';
 
-  if (!title)      return toast('상품명은 필수입니다.');
-  if (!(price >=0)) return toast('가격이 올바르지 않습니다.');
+  if (!title)       return toast('상품명은 필수입니다.');
+  if (!(price >= 0)) return toast('가격이 올바르지 않습니다.');
 
   const fThumb  = $('#product-thumb')?.files?.[0] || null;
   const fImages = Array.from($('#product-images')?.files || []);
@@ -466,8 +367,10 @@ async function onSaveProduct(e){
     }
 
     const now = firebase.firestore.FieldValue.serverTimestamp();
-    const productId = getv('#product-id'); // Get product ID from hidden input
-    const productRef = db().collection('products').doc(productId || undefined);
+    const productId = $('#product-id')?.value || '';
+    const productRef = productId
+      ? db().collection('products').doc(productId)
+      : db().collection('products').doc();
 
     let existingProduct = null;
     if (productId) {
@@ -484,7 +387,7 @@ async function onSaveProduct(e){
       status: 'active',
       thumbURL: thumbURL || (existingProduct ? existingProduct.thumbURL : null),
       imageURLs: imageURLs.length > 0 ? imageURLs : (existingProduct ? existingProduct.imageURLs : []),
-      images: imageURLs.length > 0 ? imageURLs : (existingProduct ? existingProduct.images : []), // 레거시 호환
+      images: imageURLs.length > 0 ? imageURLs : (existingProduct ? existingProduct.images : []),
       updatedAt: now,
     };
     if (!productId) { doc.createdAt = now; }
@@ -492,8 +395,8 @@ async function onSaveProduct(e){
     await withTimeout(productRef.set(doc, {merge: true}), TIMEOUT_MS, '상품 저장');
     toast('상품 저장 완료');
     $('#product-form')?.reset();
-    $('#product-thumb-progress').textContent = '';
-    $('#product-images-progress').textContent = '';
+    const p1 = $('#product-thumb-progress'); if (p1) p1.textContent = '';
+    const p2 = $('#product-images-progress'); if (p2) p2.textContent = '';
   } catch(err){
     console.error(err);
     toast(`상품 저장 실패: ${err?.code || ''} ${err?.message || err}`);
@@ -502,16 +405,15 @@ async function onSaveProduct(e){
   }
 }
 
-// ===== 저장 (블로그 URL/유튜브) =====
 async function onSaveBlog(e){
   e?.preventDefault?.();
   if (savingBlog) return;
   const u = auth().currentUser || await ensureAuthUI();
   const uid = u.uid;
 
-  const title = getv('#blog-title');
-  const url   = getv('#blog-url');
-  const tags  = getv('#blog-tags').split(',').map(s=>s.trim()).filter(Boolean);
+  const title = $('#blog-title')?.value?.trim() || '';
+  const url   = $('#blog-url')?.value?.trim() || '';
+  const tags  = ($('#blog-tags')?.value || '').split(',').map(s=>s.trim()).filter(Boolean);
 
   if (!title) return toast('제목은 필수입니다.');
   try { new URL(url); } catch { return toast('URL 형식이 올바르지 않습니다.'); }
@@ -552,12 +454,77 @@ async function onSaveBlog(e){
   }
 }
 
-// Entry
-document.addEventListener('DOMContentLoaded', async ()=>{
-  try{
-    await loadPage();
+// ===== Entry =====
+async function loadPage() {
+  try {
+    await ensureLayout('localmate.html');
 
-    // 폼/버튼 이벤트
+    const u = auth().currentUser || await ensureAuthUI();
+    const uid = u.uid;
+
+    const hashId = getHashAgentId();
+    const admin  = await isAdminUser(u);
+    const targetId = (hashId && admin) ? hashId : uid;   // 관리자 + 해시 → 해당 에이전트, 아니면 본인
+    const isSelf = (targetId === uid);
+    const canEdit = isSelf || admin;
+
+    // Firestore에서 최신 데이터 로드
+    let agentData = null;
+    try {
+      const snap = await db().collection('agents').doc(targetId).get();
+      if (snap.exists) agentData = snap.data();
+    } catch (error) {
+      console.error('Error fetching agent info from Firebase:', error);
+    }
+
+    // 폼/프리뷰 채우기
+    const setv = (sel, v="")=>{ const n=$(sel); if(n) n.value = v ?? ""; };
+    if (agentData) {
+      setv('#agent-name',        agentData.displayName);
+      setv('#agent-bio',         agentData.bio);
+      setv('#agent-contact',     agentData.contact);
+      setv('#agent-messenger',   agentData.messenger);
+      setv('#agent-wallet',      agentData.wallet);
+      setv('#agent-blog-url',    agentData.blogUrl);
+      setv('#agent-youtube-url', agentData.youtubeUrl);
+
+      if (agentData.photoURL) {
+        const img = $('#agent-photo-preview');
+        if (img) { img.src = agentData.photoURL; img.classList.remove('hidden'); img.style.display = 'block'; }
+        const pv = $('#pv-photo'); if (pv) pv.src = agentData.photoURL;
+      }
+      const badge = $('#agent-approve-badge');
+      if (badge) badge.textContent = `승인 상태: ${agentData.status || 'pending'}`;
+
+      populateCountryCity(agentData.country, agentData.city);
+      populateTopics(agentData.topic);
+
+      // 프리뷰 텍스트
+      const pvName = $('#pv-name'); if (pvName) pvName.textContent = agentData.displayName || '로컬 메이트';
+      const pvTopic = $('#pv-topic'); if (pvTopic) pvTopic.textContent = agentData.topic || '주제없음';
+      const pvCity = $('#pv-city'); if (pvCity) pvCity.textContent = `${agentData.country||''} ${agentData.city||''}`.trim();
+      const pvBio = $('#pv-bio'); if (pvBio) pvBio.textContent = agentData.bio || '';
+      const pvContact = $('#pv-contact'); if (pvContact) pvContact.textContent = agentData.contact || '';
+      $('#pv-contact-row')?.classList?.toggle('hidden', !agentData.contact);
+    } else {
+      // 데이터가 없더라도 드롭다운은 표시
+      populateCountryCity('', '');
+      populateTopics('');
+    }
+
+    // 타인 프로필 열람 시 편집 제어
+    if (!canEdit) {
+      // 입력/업로드/저장 비활성
+      ['#agent-form input','#agent-form textarea','#agent-form select'].forEach(sel=>{
+        document.querySelectorAll(sel).forEach(el=>el.disabled = true);
+      });
+      $('#agent-save')?.setAttribute('disabled','disabled');
+      toast('읽기 전용 모드로 열람 중입니다.');
+    } else if (!isSelf && admin) {
+      toast('관리자 권한으로 편집 가능합니다.');
+    }
+
+    // 이벤트 바인딩
     $('#agent-form')?.addEventListener('submit', onSaveProfile);
     $('#agent-save')?.addEventListener('click', (e)=>{ e.preventDefault(); $('#agent-form')?.requestSubmit?.(); });
 
@@ -566,7 +533,9 @@ document.addEventListener('DOMContentLoaded', async ()=>{
 
     $('#blog-form')?.addEventListener('submit', onSaveBlog);
     $('#blog-save')?.addEventListener('click', (e)=>{ e.preventDefault(); $('#blog-form')?.requestSubmit?.(); });
-  } catch(e){
+  } catch (e) {
     console.error(e);
   }
-});
+}
+
+document.addEventListener('DOMContentLoaded', loadPage);

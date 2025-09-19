@@ -1,0 +1,192 @@
+
+<!-- localmate.html -->
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+  <meta name="theme-color" content="#0C0F14"/>
+  <title>LocaMate · 프로필</title>
+  <link rel="stylesheet" href="./styles.css"/>
+
+  <!-- ✅ Firebase compat SDK (순서 중요) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+
+  <!-- 프로젝트 설정/초기화 -->
+  <script src="./src/config.js"></script>
+  <script src="./src/firebase-init.js"></script>
+
+  <!-- Ethers (필요 시 다른 페이지에서 사용) -->
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.12.1/dist/ethers.umd.min.js"></script>
+
+  <!-- 헤더 로더 -->
+  <script src="./src/ui/header-loader.js"></script>
+
+  <style>
+    .muted{color:#9aa3af}
+    .section-title{margin:16px 0 8px}
+    .card{background:#0f131a;border:1px solid #1f2836;border-radius:12px;padding:16px}
+    .row{display:flex;gap:10px;align-items:center}
+  </style>
+</head>
+<body>
+  <div id="app-header"></div>
+
+  <main class="container" style="max-width:960px;margin:0 auto;padding:16px">
+    <h2 class="section-title">신청자 정보</h2>
+    <section class="card">
+      <div class="profile-info">
+        <p><strong>이름:</strong> <span id="profile-name" class="muted">-</span></p>
+        <p><strong>이메일:</strong> <span id="profile-email" class="muted">-</span></p>
+        <p><strong>지갑 주소:</strong> <span id="profile-wallet-address" class="muted">-</span></p>
+        <p><strong>Firebase UID:</strong> <span id="profile-uid" class="muted">-</span></p>
+        <p><strong>가입일:</strong> <span id="profile-created-at" class="muted">-</span></p>
+        <p><strong>마지막 로그인:</strong> <span id="profile-last-login" class="muted">-</span></p>
+      </div>
+    </section>
+
+    <h2 class="section-title" style="margin-top:20px">에이전트 정보</h2>
+    <section class="card">
+      <div class="agent-info">
+        <p><strong>상태:</strong> <span id="agent-status" class="muted">-</span></p>
+        <p><strong>도시:</strong> <span id="agent-city" class="muted">-</span></p>
+        <p><strong>주제:</strong> <span id="agent-topic" class="muted">-</span></p>
+        <p><strong>소개:</strong> <span id="agent-bio" class="muted">-</span></p>
+        <img id="agent-photo" alt="Agent Photo" style="max-width:200px;margin-top:10px;display:none;border-radius:12px;object-fit:cover;">
+      </div>
+    </section>
+  </main>
+
+  <!-- Global Error Display -->
+  <div id="global-error-display" style="position:fixed;bottom:10px;left:10px;background:#e11d48;color:#fff;padding:10px;border-radius:8px;z-index:1000;display:none;"></div>
+
+  <script>
+    // 전역 에러 오버레이
+    const showErr = (msg) => {
+      const el = document.getElementById('global-error-display');
+      if (!el) return;
+      el.style.display = 'block';
+      el.textContent = msg;
+    };
+    window.onerror = (message, source, lineno) => {
+      showErr(`Error: ${message} at ${source}:${lineno}`);
+      return false;
+    };
+    window.addEventListener('unhandledrejection', (ev) => {
+      showErr(`Unhandled Promise Rejection: ${ev.reason?.message || ev.reason}`);
+    });
+  </script>
+
+  <!-- ✅ 이 페이지 전용 로딩 로직: #해시 문서ID가 있으면 그 문서, 없으면 본인 uid -->
+  <script type="module">
+    const auth = () => firebase.auth();
+    const db   = () => firebase.firestore();
+
+    const $ = (s) => document.querySelector(s);
+    const setText = (sel, v) => { const n=$(sel); if(n) n.textContent = v ?? '-'; };
+    const fmtTS = (ts) => {
+      try {
+        if (!ts) return '-';
+        if (ts.toDate) return ts.toDate().toLocaleString();
+        const d = new Date(ts);
+        return isNaN(d) ? '-' : d.toLocaleString();
+      } catch { return '-'; }
+    };
+
+    // 간단 로그인 보장 (Google)
+    async function ensureAuth() {
+      try { await auth().getRedirectResult(); } catch {}
+      if (auth().currentUser) return auth().currentUser;
+      const user = await new Promise(r => {
+        const un = auth().onAuthStateChanged(u => { un(); r(u||null); });
+      });
+      if (user) return user;
+
+      // 모달 없이 곧바로 redirect 시도(관리자 운영 페이지 시나리오)
+      const provider = new firebase.auth.GoogleAuthProvider();
+      await auth().signInWithRedirect(provider);
+      // redirect 후 되돌아오면 위 getRedirectResult로 회수됨
+      return new Promise(()=>{}); // 흐름 차단 (redirect)
+    }
+
+    function getHashAgentId(){
+      const h = (location.hash||'').replace(/^#/,'').trim();
+      return h ? decodeURIComponent(h) : null;
+    }
+
+    // users/{uid} 도큐먼트에서 가입/로그인 시각 후보 필드 여러 개를 시도
+    function extractUserTimes(uDoc){
+      if (!uDoc) return { createdAt:'-', lastLogin:'-' };
+      const d = uDoc.data ? uDoc.data() : uDoc;
+      const created = d.createdAt || d.created_at || d.joinedAt || d.joined_at || null;
+      const last    = d.lastLoginAt || d.last_login_at || d.last_login || d.lastLogin || null;
+      return { createdAt: fmtTS(created), lastLogin: fmtTS(last) };
+    }
+
+    // 메인 로더
+    (async function load() {
+      // Firebase 준비 로그
+      console.info('[config]', window.firebaseConfig);
+
+      // 로그인 보장
+      const me = await ensureAuth();
+      const myUid = me.uid;
+
+      // 대상 문서 ID 결정: #hash 있으면 그 문서, 아니면 내 uid
+      const hashId = getHashAgentId();
+      const targetId = hashId || myUid;
+
+      // 병렬 로드: agents/{targetId}, users/{targetId}
+      const [agentSnap, userSnap] = await Promise.allSettled([
+        db().collection('agents').doc(targetId).get(),
+        db().collection('users').doc(targetId).get()
+      ]);
+
+      const agentData = (agentSnap.status === 'fulfilled' && agentSnap.value.exists) ? agentSnap.value.data() : null;
+      const userDataSnap = (userSnap.status === 'fulfilled' && userSnap.value.exists) ? userSnap.value : null;
+
+      // ===== 신청자(프로필) 영역 채우기 =====
+      // 이름/이메일/UID
+      setText('#profile-name',  agentData?.displayName || agentData?.name || '-');
+      setText('#profile-email', agentData?.email || userDataSnap?.data()?.email || '-');
+      setText('#profile-uid',   agentData?.ownerUid || targetId);
+
+      // 지갑
+      setText('#profile-wallet-address', agentData?.wallet || '-');
+
+      // 가입일/마지막 로그인 (가능한 경우만)
+      const { createdAt, lastLogin } = extractUserTimes(userDataSnap);
+      // 본인인 경우 auth metadata로 보완
+      const metaCreated = me?.metadata?.creationTime ? new Date(me.metadata.creationTime) : null;
+      const metaLast    = me?.metadata?.lastSignInTime ? new Date(me.metadata.lastSignInTime) : null;
+      setText('#profile-created-at', hashId ? createdAt : (metaCreated ? metaCreated.toLocaleString() : createdAt));
+      setText('#profile-last-login', hashId ? lastLogin  : (metaLast ? metaLast.toLocaleString() : lastLogin));
+
+      // ===== 에이전트 영역 채우기 =====
+      setText('#agent-status', agentData?.status || 'pending');
+      setText('#agent-city',   [agentData?.country, agentData?.city].filter(Boolean).join(' ') || '-');
+      setText('#agent-topic',  agentData?.topic || '-');
+      setText('#agent-bio',    agentData?.bio || '-');
+
+      const img = document.getElementById('agent-photo');
+      if (agentData?.photoURL) {
+        img.src = agentData.photoURL;
+        img.style.display = 'block';
+      } else {
+        img.style.display = 'none';
+      }
+
+      // 최종 안내
+      console.info('[localmate view] loaded', { targetId, agentData });
+    })().catch(err => {
+      console.error(err);
+      showErr(err?.message || String(err));
+    });
+  </script>
+</body>
+</html>
+

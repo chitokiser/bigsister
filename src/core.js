@@ -357,6 +357,15 @@ export async function connectWallet(){
     const bw = $('#btn-wallet');
     if (bw) bw.textContent = '연결됨: '+wallet.slice(0,6)+'…'+wallet.slice(-4);
     toast('지갑 연결 성공');
+
+    // Save wallet address to Firestore user profile
+    if (State.user && State.user.uid) {
+      await db.collection('users').doc(State.user.uid).set(
+        { walletAddress: wallet, updatedAt: TS() },
+        { merge: true }
+      );
+    }
+
   }catch(e){
     console.error(e);
     toast('지갑 연결 실패: '+(e?.message||e));

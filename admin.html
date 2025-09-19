@@ -7,8 +7,9 @@
   <title>LocaMate · 운영자</title>
   <link rel="stylesheet" href="./styles.css"/>
 
-  <!-- Firebase (compat) -->
+  <!-- ✅ Firebase (compat) — 순서 중요 -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
@@ -17,6 +18,31 @@
   <script src="./src/config.js"></script>
   <script src="./src/firebase-init.js"></script>
   <script src="./src/ui/header-loader.js"></script>
+
+  <!-- Ethers v6 (② 온체인용) -->
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.12.1/dist/ethers.umd.min.js"></script>
+
+  <style>
+    body { color:#e5e7eb; background:#0b0f14; }
+    .container{ max-width:1100px; margin:0 auto; padding:16px }
+    .section-title{ margin:16px 0 12px }
+    .card{ background:#0f131a; border:1px solid #1f2836; border-radius:12px; padding:16px }
+    .row{ display:flex; gap:10px; align-items:center }
+    .btn{ background:#4f46e5; border:0; color:#fff; padding:8px 12px; border-radius:8px; cursor:pointer }
+    .btn.small{ padding:6px 10px; font-size:14px }
+    .btn.secondary{ background:#334155 }
+    .list table{ width:100%; border-collapse:collapse; }
+    .list th, .list td{ border-bottom:1px solid #1f2836; padding:10px; vertical-align:middle }
+    .status-badge{ padding:3px 8px; border-radius:999px; font-size:12px; background:#1f2937 }
+    .status-approved{ background:#065f46 }
+    .status-pending{ background:#4b5563 }
+    .chain-badge{ padding:3px 8px; border-radius:999px; font-size:12px; background:#1f2937 }
+    .chain-yes{ background:#0f766e }
+    .chain-no{ background:#4b5563 }
+    input.wallet-input{ width:280px; padding:8px; border-radius:8px; border:1px solid #334155; background:#0b1220; color:#e5e7eb }
+    a.link{ color:#60a5fa; text-decoration:underline }
+    .muted{ color:#9aa3af }
+  </style>
 </head>
 <body>
   <div id="app-header"></div>
@@ -25,20 +51,317 @@
     <h2 class="section-title">운영자 대시보드</h2>
 
     <section class="card">
-      <div class="row" style="align-items:center">
-        <h3 style="margin:0">로컬메이트 승인 대기</h3>
+      <div class="row">
+        <h3 style="margin:0">로컬메이트 승인 대기 (① 오프체인 승인)</h3>
         <button id="btn-refresh" class="btn small" style="margin-left:auto">새로고침</button>
       </div>
-      <div id="pending-list" class="list"></div>
+      <div id="pending-list" class="list" style="margin-top:10px"></div>
     </section>
 
     <section class="card" style="margin-top:16px">
       <h3 style="margin:0">전체 에이전트</h3>
-      <div id="all-list" class="list"></div>
+      <div id="all-list" class="list" style="margin-top:10px"></div>
+    </section>
+
+    <section class="card" style="margin-top:16px">
+      <h3 style="margin:0">메이트 승인 (② 스마트 컨트랙트)</h3>
+      <div class="muted" style="margin-top:6px">오프체인 승인(상단) 후, 지갑 주소로 온체인 최종 승인합니다.</div>
+      <div class="row" style="gap:12px; margin-top:10px">
+        <input type="text" id="mate-address-input" placeholder="메이트 지갑 주소 (0x…)" class="wallet-input" style="flex:1"/>
+        <button id="btn-approve-mate" class="btn">메이트 승인(온체인)</button>
+      </div>
+      <p id="mate-approval-status" class="muted" style="margin-top:8px"></p>
     </section>
   </main>
 
-  <!-- Admin 페이지 로직 (ESM) -->
-  <script type="module" src="./src/admin/admin.js"></script>
+  <!-- Global Error Display -->
+  <div id="global-error-display" style="position:fixed;left:10px;bottom:10px;max-width:92vw;background:#ef4444;color:#fff;padding:10px 12px;border-radius:8px;z-index:1000;display:none;box-shadow:0 8px 24px rgba(0,0,0,.3)">
+    <strong style="margin-right:8px">오류</strong>
+    <span id="global-error-text"></span>
+    <button id="global-error-close" style="margin-left:10px;background:rgba(0,0,0,.2);border:0;color:#fff;padding:4px 8px;border-radius:6px;cursor:pointer">닫기</button>
+  </div>
+
+  <!-- 관리자 로직 (ESM) -->
+  <script type="module">
+    "use strict";
+
+    /************** 공용 유틸 **************/
+    const $  = (s, el=document) => el.querySelector(s);
+    const $$ = (s, el=document) => Array.from(el.querySelectorAll(s));
+    const auth = () => firebase.auth();
+    const db   = () => firebase.firestore();
+
+    function toMessage(err) {
+      try {
+        if (err == null) return '알 수 없는 오류';
+        if (typeof err === 'string') return err;
+        if (err instanceof Error) return err.message || String(err);
+        if (typeof err.message === 'string') return err.message;
+        if (typeof err.reason === 'string') return err.reason;
+        return JSON.stringify(err);
+      } catch { return '알 수 없는 오류'; }
+    }
+    function showGlobalError(message, autoHideMs = 8000) {
+      const wrap = $('#global-error-display'), text = $('#global-error-text');
+      if (!wrap || !text) return;
+      text.textContent = message;
+      wrap.style.display = 'block';
+      if (autoHideMs > 0) {
+        clearTimeout(showGlobalError._t);
+        showGlobalError._t = setTimeout(() => { wrap.style.display = 'none'; }, autoHideMs);
+      }
+    }
+    $('#global-error-close')?.addEventListener('click', ()=> { $('#global-error-display').style.display='none'; });
+
+    const toast = (msg) => {
+      console.log('[toast]', msg);
+      let el = document.getElementById('toast');
+      if (!el) {
+        el = Object.assign(document.createElement('div'), { id:'toast' });
+        Object.assign(el.style, {
+          position:'fixed', right:'12px', bottom:'12px', background:'#111827', color:'#fff',
+          padding:'10px 14px', borderRadius:'10px', border:'1px solid #374151', zIndex:99999
+        });
+        document.body.appendChild(el);
+      }
+      el.textContent = msg;
+      clearTimeout(el.__t);
+      el.__t = setTimeout(() => el.remove(), 2200);
+    };
+
+    window.onerror = (m, src, ln, col) => { showGlobalError(`[window.onerror] ${toMessage(m)} @ ${src||'unknown'}:${ln||0}:${col||0}`); return false; };
+    window.addEventListener('unhandledrejection', ev => { const r = 'reason' in ev ? ev.reason : ev; showGlobalError(`[unhandledrejection] ${toMessage(r)}`); });
+
+    /************** 체인 & 컨트랙트 설정 (②에서 사용) **************/
+    const CONTRACT = {
+      address: "0x105078EE5c66B3d28F1f20FAcF515c3B3e7fa588",   // ← 실제 주소로 교체
+      chainIdHex: "0xCC",                      // 예: opBNB Mainnet = 0xCC
+      abi: [ "function mateok(address user) external" ]
+    };
+    async function ensureWallet(opts={}) {
+      const eth = window.ethereum;
+      if (!eth) { alert('지갑 확장 프로그램이 없습니다. MetaMask/Rabby 설치 후 재시도'); throw new Error('NO_WALLET'); }
+      const chainIdHex = opts.chainIdHex || CONTRACT.chainIdHex;
+      try { await eth.request({ method:'eth_requestAccounts' }); }
+      catch (e) { if (e?.code===4001) throw new Error('사용자가 연결을 거부했습니다.'); throw e; }
+      let cur = await eth.request({ method:'eth_chainId' });
+      if (cur !== chainIdHex) {
+        try {
+          await eth.request({ method:'wallet_switchEthereumChain', params:[{ chainId: chainIdHex }] });
+        } catch (e) {
+          if (e?.code === 4902) {
+            await eth.request({
+              method:'wallet_addEthereumChain',
+              params:[{
+                chainId: chainIdHex,
+                chainName: 'opBNB Mainnet',
+                nativeCurrency: { name:'BNB', symbol:'BNB', decimals:18 },
+                rpcUrls: ['https://opbnb-mainnet-rpc.bnbchain.org'],
+                blockExplorerUrls: ['https://opbnbscan.com']
+              }]
+            });
+          } else { throw e; }
+        }
+      }
+      const E = window.ethers;
+      if (!E?.BrowserProvider) throw new Error('ethers v6가 로드되지 않았습니다.');
+      const provider = new E.BrowserProvider(eth);
+      const signer   = await provider.getSigner();
+      if (!window.__walletEventsBound) {
+        eth.on?.('disconnect', ()=>location.reload());
+        eth.on?.('accountsChanged', ()=>location.reload());
+        eth.on?.('chainChanged',   ()=>location.reload());
+        window.__walletEventsBound = true;
+      }
+      return { provider, signer };
+    }
+
+    /************** Firestore 렌더링 **************/
+    function chainBadge(d) {
+      const on = !!(d.onchainApproved === true);
+      return `<span class="chain-badge ${on?'chain-yes':'chain-no'}">${on?'체인O':'체인X'}</span>`;
+    }
+    function agentRowHtml(doc) {
+      const uid   = doc.id;
+      const d     = doc.data();
+      const name  = d.displayName || d.name || '(이름없음)';
+      const email = d.email || '';
+      const st    = (d.status || 'pending').toLowerCase();
+      const wallet= d.wallet || '';
+      return `
+        <tr id="row-${uid}">
+          <td>
+            <a class="link" href="localmate.html#${uid}" target="_blank">${name}</a>
+            <div class="muted" style="font-size:12px">${uid}</div>
+          </td>
+          <td>${email || '-'}</td>
+          <td><span class="status-badge ${st==='approved'?'status-approved':'status-pending'}">${st}</span></td>
+          <td>${chainBadge(d)}</td>
+          <td>
+            <input id="w-${uid}" class="wallet-input" placeholder="0x..." value="${wallet}"/>
+          </td>
+          <td>
+            <button class="btn btn-off-approve" data-uid="${uid}">오프체인 승인</button>
+          </td>
+        </tr>
+      `;
+    }
+
+    function renderTable(hostSel, docs, emptyMsg) {
+      const host = $(hostSel);
+      if (!host) return;
+      if (!docs.length) {
+        host.innerHTML = `<div class="muted">${emptyMsg}</div>`;
+        return;
+      }
+      host.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>이름/UID</th><th>이메일</th><th>상태</th><th>체인</th><th>지갑</th><th>액션</th>
+            </tr>
+          </thead>
+          <tbody>${docs.map(agentRowHtml).join('')}</tbody>
+        </table>
+      `;
+    }
+
+    async function fetchPending() {
+      try {
+        const q = await db().collection('agents')
+          .where('status','==','pending')
+          .orderBy('updatedAt','desc')
+          .limit(100)
+          .get();
+        renderTable('#pending-list', q.docs, '승인 대기 중인 신청자가 없습니다.');
+      } catch (e) {
+        console.error(e);
+        renderTable('#pending-list', [], '승인 대기 목록을 불러오지 못했습니다. (인덱스 필요 가능)');
+        showGlobalError('승인대기 목록 오류: ' + toMessage(e));
+      }
+    }
+
+    async function fetchAll() {
+      try {
+        const q = await db().collection('agents')
+          .orderBy('updatedAt','desc')
+          .limit(100)
+          .get();
+        renderTable('#all-list', q.docs, '에이전트가 없습니다.');
+      } catch (e) {
+        console.error(e);
+        renderTable('#all-list', [], '전체 목록을 불러오지 못했습니다.');
+        showGlobalError('전체 목록 오류: ' + toMessage(e));
+      }
+    }
+
+    /************** ① 오프체인 승인 (온체인 건드리지 않음) **************/
+    async function approveOffchain(uid) {
+      const i = document.getElementById(`w-${uid}`);
+      const walletRaw = (i?.value || '').trim();
+      const wallet = (walletRaw && window.ethers?.isAddress(walletRaw)) ? window.ethers.getAddress(walletRaw) : (walletRaw || null);
+
+      const now = firebase.firestore.FieldValue.serverTimestamp();
+      await db().collection('agents').doc(uid).set({
+        status: 'approved',           // 오프체인 승인상태
+        approvedAt: now,
+        approvedBy: auth().currentUser?.uid || '',
+        wallet: wallet || firebase.firestore.FieldValue.delete(), // 입력 없으면 필드 제거
+        // 온체인 필드는 건드리지 않음
+      }, { merge:true });
+
+      toast('오프체인 승인 완료');
+      await Promise.all([fetchPending(), fetchAll()]);
+    }
+
+    /************** ② 온체인 승인 (지갑 입력 → mateok 호출) **************/
+    async function approveOnchainByAddress(addr) {
+      if (!window.ethers?.isAddress(addr)) throw new Error('올바른 지갑 주소가 아닙니다.');
+      const status = $('#mate-approval-status');
+
+      const { signer } = await ensureWallet({ chainIdHex: CONTRACT.chainIdHex });
+      const contract = new window.ethers.Contract(CONTRACT.address, CONTRACT.abi, signer);
+
+      status.textContent = '트랜잭션 전송 중…';
+      const tx = await contract.mateok(addr);
+      status.textContent = '전송됨: ' + tx.hash;
+      const rc = await tx.wait();
+      if (!rc?.status) throw new Error('트랜잭션 실패');
+
+      // 이 지갑을 가진 문서(여러 개일 수 있음)를 모두 체인승인 처리
+      const qs = await db().collection('agents').where('wallet','==', window.ethers.getAddress(addr)).limit(25).get();
+      const batch = db().batch();
+      const now = firebase.firestore.FieldValue.serverTimestamp();
+      qs.forEach(d => {
+        batch.set(db().collection('agents').doc(d.id), {
+          onchainApproved: true,
+          onchainAt: now,
+          approvedTx: tx.hash
+          // status는 오프체인 단계에서 이미 approved 이므로 유지
+        }, { merge:true });
+      });
+      if (!qs.empty) await batch.commit();
+
+      status.textContent = '온체인 승인 완료';
+      toast('온체인 승인 완료');
+      await Promise.all([fetchPending(), fetchAll()]);
+    }
+
+    /************** 이벤트 바인딩 & 초기화 **************/
+    function bindEvents() {
+      // 새로고침
+      $('#btn-refresh')?.addEventListener('click', async ()=> {
+        await Promise.all([fetchPending(), fetchAll()]);
+        toast('새로고침 완료');
+      });
+
+      // 행별 오프체인 승인 (이벤트 위임)
+      document.addEventListener('click', async (ev) => {
+        const btn = ev.target.closest('.btn-off-approve');
+        if (!btn) return;
+        ev.preventDefault();
+        const uid = btn.dataset.uid;
+        try {
+          btn.disabled = true; btn.textContent = '승인 중…';
+          await approveOffchain(uid);
+        } catch (e) {
+          showGlobalError(toMessage(e));
+        } finally {
+          btn.disabled = false; btn.textContent = '오프체인 승인';
+        }
+      });
+
+      // ② 온체인 승인
+      $('#btn-approve-mate')?.addEventListener('click', async ()=> {
+        const addr = $('#mate-address-input')?.value?.trim();
+        if (!addr) { showGlobalError('지갑 주소를 입력하세요.'); return; }
+        try {
+          await approveOnchainByAddress(addr);
+        } catch (e) {
+          showGlobalError(toMessage(e));
+        }
+      });
+    }
+
+    async function ensureAuth() {
+      try { await auth().getRedirectResult(); } catch {}
+      if (auth().currentUser) return auth().currentUser;
+      const u = await new Promise(r => { const un = auth().onAuthStateChanged(x=>{un(); r(x||null);}); });
+      if (u) return u;
+      const provider = new firebase.auth.GoogleAuthProvider();
+      await auth().signInWithRedirect(provider);
+      return new Promise(()=>{});
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      try {
+        await ensureAuth();
+        bindEvents();
+        await Promise.all([fetchPending(), fetchAll()]);
+      } catch (e) {
+        showGlobalError(toMessage(e));
+      }
+    });
+  </script>
 </body>
 </html>

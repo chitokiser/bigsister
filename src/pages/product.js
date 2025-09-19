@@ -1,90 +1,219 @@
 // src/pages/product.js
-(() => {
-  'use strict';
+import { ensureLayout, requireAuth, toast } from '../core.js';
+import { doc, getDoc, collection, query, where, getDocs, runTransaction, FieldValue } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-  if (!window.firebase || !window.firebaseConfig) {
-    console.error('[product] Firebase SDK 또는 firebaseConfig 누락');
+(async function() {
+  await ensureLayout('product.html');
+
+  const urlParams = new URLSearchParams(window.location.search);
+  const productId = urlParams.get('id');
+
+  if (!productId) {
+    toast('상품 ID를 찾을 수 없습니다.');
+    window.location.href = '/index.html';
     return;
   }
-  const app = firebase.apps.length ? firebase.app() : firebase.initializeApp(window.firebaseConfig);
+
   const db = firebase.firestore();
-  const storage = firebase.storage();
+  const auth = firebase.auth();
 
-  const $details = document.getElementById('product-details');
-  const PLACEHOLDER = 'https://placehold.co/1200x800?text=LocalMate';
+  const productDetailsContainer = document.getElementById('product-details');
+  const ratingDisplay = document.getElementById('rating-display');
+  const starRatingContainer = document.getElementById('star-rating');
+  const submitRatingBtn = document.getElementById('submit-rating');
+  const stars = starRatingContainer ? starRatingContainer.querySelectorAll('.star') : [];
 
-  // ===== Utils (copied from home.js/search.js) =====
-  const toText = (v) => (v == null ? '' : String(v));
+  let selectedRating = 0;
+  let currentProduct = null;
+
   const escapeHtml = (s='') => String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 
-  async function toImageURL(raw){
-    try{
-      const s = toText(raw).trim();
-      if (!s) return PLACEHOLDER;
-      if (/^https?:\/\//i.test(s) || /^data:image\//i.test(s)) return s;
-      if (/^gs:\/\//i.test(s)) return await storage.refFromURL(s).getDownloadURL();
-      return await storage.ref(s).getDownloadURL();
-    }catch{ return PLACEHOLDER; }
-  }
+  // Function to render product details (Safest version)
+  const renderProductDetails = (product) => {
+    currentProduct = product;
+    // Clear previous content
+    productDetailsContainer.innerHTML = '';
 
-  function qs(name){
-    const u = new URL(location.href);
-    return u.searchParams.get(name) || '';
-  }
+    // Create elements programmatically
+    const row = document.createElement('div');
+    row.className = 'row';
 
-  // ===== Product Detail Rendering =====
-  async function renderProductDetails() {
-    const productId = qs('id');
-    if (!productId) {
-      $details.innerHTML = '<div class="muted" style="padding:12px;">상품 ID를 찾을 수 없습니다.</div>';
-      return;
+    const colImg = document.createElement('div');
+    colImg.className = 'col-md-6';
+    const img = document.createElement('img');
+    img.src = product.imageUrl || 'https://placehold.co/400';
+    img.className = 'img-fluid';
+    img.alt = product.name || 'Product Image';
+    colImg.appendChild(img);
+
+    const colDetails = document.createElement('div');
+    colDetails.className = 'col-md-6';
+
+    const nameH2 = document.createElement('h2');
+    nameH2.textContent = product.name || '[상품명 없음]';
+
+    const priceP = document.createElement('p');
+    priceP.innerHTML = `<strong>가격:</strong> ${product.price || 0}paw`;
+
+    const descDiv = document.createElement('div');
+    const descTitle = document.createElement('strong');
+    descTitle.textContent = '설명:';
+    const descContent = document.createElement('div');
+    descContent.className = 'product-description-html';
+    // Safely set as plain text
+    descContent.textContent = product.description || '';
+    descDiv.appendChild(descTitle);
+    descDiv.appendChild(descContent);
+
+    const ratingP = document.createElement('p');
+    ratingP.innerHTML = `<strong>평균 평점:</strong> <span id="avg-rating">${product.avgRating ? product.avgRating.toFixed(1) : 'N/A'}</span> (${product.numRatings || 0}명 참여)`;
+
+    colDetails.appendChild(nameH2);
+    colDetails.appendChild(priceP);
+    colDetails.appendChild(descDiv);
+    colDetails.appendChild(ratingP);
+
+    row.appendChild(colImg);
+    row.appendChild(colDetails);
+
+    productDetailsContainer.appendChild(row);
+
+    displayAverageRating(product.avgRating, product.numRatings);
+  };
+
+  // Function to display average rating
+  const displayAverageRating = (avgRating, numRatings) => {
+    if (ratingDisplay) {
+      ratingDisplay.innerHTML = `현재 평균 평점: <strong>${avgRating ? avgRating.toFixed(1) : 'N/A'}</strong> (${numRatings || 0}명 참여)`;
     }
+  };
 
-    $details.innerHTML = '<div class="muted" style="padding:12px;">상품 정보를 불러오는 중…</div>';
-
+  // Fetch product details and ratings
+  const fetchProductAndRatings = async () => {
     try {
       const productRef = db.collection('products').doc(productId);
-      const productDoc = await productRef.get();
+      const productSnap = await productRef.get();
 
-      if (!productDoc.exists) {
-        $details.innerHTML = '<div class="muted" style="padding:12px;">상품을 찾을 수 없습니다.</div>';
+      if (productSnap.exists) {
+        const productData = { id: productSnap.id, ...productSnap.data() };
+        renderProductDetails(productData);
+
+        const user = auth.currentUser;
+        if (user) {
+          const userRatingRef = productRef.collection('ratings').doc(user.uid);
+          const userRatingSnap = await userRatingRef.get();
+          if (userRatingSnap.exists) {
+            selectedRating = userRatingSnap.data().rating;
+            stars.forEach((star, i) => {
+              star.style.color = i < selectedRating ? 'gold' : 'gray';
+            });
+            if (ratingDisplay) {
+              ratingDisplay.textContent = `선택 평점: ${selectedRating}점`;
+            }
+          }
+        }
+      } else {
+        toast('상품을 찾을 수 없습니다.');
+        window.location.href = '/index.html';
+      }
+    } catch (error) {
+      console.error('[product] Error fetching product:', error);
+      toast('상품 정보를 불러오는 중 오류가 발생했습니다.');
+    }
+  };
+
+  await fetchProductAndRatings();
+
+  // Star hover and click effects
+  if (starRatingContainer) {
+    stars.forEach(star => {
+      star.addEventListener('mouseover', () => {
+        const value = parseInt(star.dataset.value);
+        stars.forEach((s, i) => {
+          s.style.color = i < value ? 'gold' : 'gray';
+        });
+      });
+
+      star.addEventListener('mouseout', () => {
+        stars.forEach((s, i) => {
+          s.style.color = i < selectedRating ? 'gold' : 'gray';
+        });
+      });
+
+      star.addEventListener('click', () => {
+        selectedRating = parseInt(star.dataset.value);
+        stars.forEach((s, i) => {
+          s.style.color = i < selectedRating ? 'gold' : 'gray';
+        });
+        if (ratingDisplay) {
+          ratingDisplay.textContent = `선택 평점: ${selectedRating}점`;
+        }
+      });
+    });
+  }
+
+  // Submit rating
+  if (submitRatingBtn) {
+    submitRatingBtn.addEventListener('click', async () => {
+      if (selectedRating === 0) {
+        toast('평점을 선택해주세요.');
+        return;
+      }
+      if (!productId) {
+        toast('상품 ID를 찾을 수 없습니다.');
         return;
       }
 
-      const d = productDoc.data();
-      const title = d.title || d.name || '상품';
-      const desc = toText(d.body || d.desc || d.description || ''); // Full description
-      const price = d.price ? d.price.toLocaleString() + '원' : '가격 미정';
+      const user = auth.currentUser;
+      if (!user) {
+        toast('로그인 후 평점을 남길 수 있습니다.');
+        // Optionally redirect to login page
+        return;
+      }
 
-      const ownerName = toText(d.ownerName || d.owner || d.agentName).trim();
-      const ownerHtml = ownerName ? `<div class="owner" style="margin-top:8px;font-style:italic;">판매자: ${escapeHtml(ownerName)}</div>` : '';
+      try {
+        await db.runTransaction(async (transaction) => {
+          const productRef = db.collection('products').doc(productId);
+          const productDoc = await transaction.get(productRef);
 
-      const mainImage = d.thumbURL || (d.imageURLs && d.imageURLs[0]) || PLACEHOLDER;
-      const otherImages = (d.imageURLs || []).slice(1);
-      const otherImagesHtml = await Promise.all(otherImages.map(async url => `<img src="${await toImageURL(url)}" style="width:80px;height:80px;object-fit:cover;border-radius:8px;">`)).then(arr => arr.join(''));
+          if (!productDoc.exists) {
+            throw new Error('상품을 찾을 수 없습니다.');
+          }
 
-      const html = `
-        <div class="product-detail-card card" style="padding:20px;margin-top:20px;">
-          <h2 style="margin-top:0;">${escapeHtml(title)}</h2>
-          <div class="main-image" style="margin-bottom:15px;">
-            <img src="${await toImageURL(mainImage)}" alt="${escapeHtml(title)}" style="max-width:100%;height:auto;border-radius:12px;">
-          </div>
-          <div class="other-images" style="display:flex;gap:10px;margin-bottom:15px;">
-            ${otherImagesHtml}
-          </div>
-          <p style="margin-bottom:15px;line-height:1.6;">${desc}</p>
-          <div class="price" style="font-size:1.5em;font-weight:bold;margin-bottom:15px;">${price}</div>
-          ${ownerHtml}
-          <a href="javascript:history.back()" class="lm-btn" style="margin-top:20px;">뒤로가기</a>
-        </div>
-      `;
-      $details.innerHTML = html;
+          const currentAvgRating = productDoc.data().avgRating || 0;
+          const currentNumRatings = productDoc.data().numRatings || 0;
 
-    } catch (err) {
-      console.error('[product] 상품 상세 로드 실패:', err);
-      $details.innerHTML = `<div class="muted" style="padding:12px;">상품 정보를 불러오지 못했습니다: ${err.message}</div>`;
-    }
+          // Check if user has already rated this product
+          const userRatingRef = productRef.collection('ratings').doc(user.uid);
+          const userRatingSnap = await transaction.get(userRatingRef);
+
+          let newNumRatings = currentNumRatings;
+          let newTotalRating = currentAvgRating * currentNumRatings;
+
+          if (userRatingSnap.exists) {
+            // User has rated before, update existing rating
+            const oldRating = userRatingSnap.data().rating;
+            newTotalRating = newTotalRating - oldRating + selectedRating;
+          } else {
+            // New rating from this user
+            newNumRatings = currentNumRatings + 1;
+            newTotalRating = newTotalRating + selectedRating;
+          }
+
+          const newAvgRating = newTotalRating / newNumRatings;
+
+          transaction.update(productRef, {
+            avgRating: newAvgRating,
+            numRatings: newNumRatings
+          });
+          transaction.set(userRatingRef, { rating: selectedRating, userId: user.uid, timestamp: firebase.firestore.FieldValue.serverTimestamp() });
+        });
+        toast('평점이 성공적으로 제출되었습니다!');
+        await fetchProductAndRatings(); // Re-fetch to update average rating display
+      } catch (error) {
+        console.error('평점 제출 오류:', error);
+        toast(`평점 제출에 실패했습니다: ${error.message}`);
+      }
+    });
   }
-
-  document.addEventListener('DOMContentLoaded', renderProductDetails);
 })();
