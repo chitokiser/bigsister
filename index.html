@@ -1,29 +1,31 @@
 <!doctype html>
-
 <html lang="ko">
 <head>
   <!-- MUST BE VERY FIRST, before any Firebase SDKs -->
-<!-- HEAD 최상단: Firebase SDK보다 먼저 -->
-<script>
-  localStorage.removeItem('FIREBASE_APPCHECK_DEBUG_TOKEN'); // auto(true) 흔적 제거
-  // 콘솔에 등록해둔 '그' 디버그 토큰(문자열)로 고정
-  self.FIREBASE_APPCHECK_DEBUG_TOKEN = 'ae36c5c3-0aa5-42c6-b9bb-1ecef4d369a1';
-</script>
-
+  <!-- HEAD 최상단: Firebase SDK보다 먼저 -->
+  <script>
+    localStorage.removeItem('FIREBASE_APPCHECK_DEBUG_TOKEN'); // auto(true) 흔적 제거
+    // 콘솔에 등록해둔 '그' 디버그 토큰(문자열)로 고정
+    self.FIREBASE_APPCHECK_DEBUG_TOKEN = 'ae36c5c3-0aa5-42c6-b9bb-1ecef4d369a1';
+  </script>
 
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
   <meta name="theme-color" content="#0C0F14"/>
-  <title>LocaMate · 홈</title>
+  <title>PawMate · 홈</title>
+
+  <!-- Favicon (요청: assets/paw120x120.png 사용) -->
+  <link rel="icon" href="./assets/paw120x120.png" type="image/png" sizes="120x120"/>
+  <link rel="apple-touch-icon" href="./assets/paw120x120.png" sizes="120x120"/>
+
   <link rel="stylesheet" href="./styles.css"/>
 
   <!-- Firebase (compat) -->
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
   <!-- 기타 라이브러리(필요시) -->
   <script src="https://cdn.jsdelivr.net/npm/ethers@6.12.1/dist/ethers.umd.min.js"></script>
@@ -31,7 +33,6 @@
 
   <!-- 설정: 반드시 다른 스크립트보다 먼저 -->
   <script src="./src/config.js"></script>
-  
 </head>
 <body>
   <!-- 헤더/푸터 컨테이너 -->
@@ -74,11 +75,10 @@
   <!-- 홈 로직 -->
   <script type="module" src="./src/pages/home.js"></script>
 
-  <!-- 3) App Check 초기화 (아래 교체본) -->
-<script src="/src/firebase-init.js"></script>
+  <!-- 3) App Check 초기화 -->
+  <script src="/src/firebase-init.js"></script>
 
-<!-- 4) 실제 앱 코드 (이후에만 Firebase 사용) -->
-<script src="./src/localmate.js" type="module"></script>
-
+  <!-- 4) 실제 앱 코드 (이후에만 Firebase 사용) -->
+  <script src="./src/localmate.js" type="module"></script>
 </body>
 </html>
